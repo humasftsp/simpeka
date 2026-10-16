@@ -15,6 +15,6 @@
  *  (kunci GOOGLE_CLIENT_ID) agar hanya ada satu sumber kebenaran.
  */
 window.SIMPEKA_CONFIG = {
-  GAS_URL: 'https://script.google.com/macros/s/AKfycbxvVF-viQNXiszfgI6qy1llZUgQVUcl8uBePdgVwzleyjDbWF_mZhleVa3dJHsqyNyg/exec,
-  LOGO_URL: 'logo-ftsp.png'
+  GAS_URL: 'https://script.google.com/macros/s/AKfycbxvVF-viQNXiszfgI6qy1llZUgQVUcl8uBePdgVwzleyjDbWF_mZhleVa3dJHsqyNyg/exec',
+  LOGO_URL: 'assets/logo-ftsp.png'
 };
