@@ -1,0 +1,3 @@
+Letakkan logo resmi FTSP / Universitas Trisakti di folder ini,
+misalnya logo-ftsp.png (persegi, latar putih),
+lalu isi LOGO_URL di js/config.js:  LOGO_URL: 'assets/logo-ftsp.png'
