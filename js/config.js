@@ -16,5 +16,5 @@
  */
 window.SIMPEKA_CONFIG = {
   GAS_URL: 'https://script.google.com/macros/s/AKfycbxvVF-viQNXiszfgI6qy1llZUgQVUcl8uBePdgVwzleyjDbWF_mZhleVa3dJHsqyNyg/exec',
-  LOGO_URL: 'assets/logo-ftsp.png'
+  LOGO_URL: 'assets/logo-ftsp-v2.png'
 };
