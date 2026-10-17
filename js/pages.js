@@ -750,6 +750,149 @@ const PAGES = (() => {
   };
 
   // =========================================================================
+  // PENGINGAT EMAIL (F10) — membuat pengingat otomatis terlihat & bisa diuji
+  // =========================================================================
+  const pengingat = {
+    title: 'Pengingat Email',
+    st: { data: null, semuaLog: false },
+    async render(el) {
+      const admin = DATA.can('pengingat', 'w');
+      el.innerHTML = `
+        ${DATA.head({
+          eyebrow: icon('mail', 14) + ' Otomatis setiap hari',
+          title: 'Pengingat Email',
+          lead: 'SIMPEKA memeriksa masa berlaku MoU, MoA, dan IA setiap hari sekitar pukul 06.00 WIB. Bila ada dokumen yang memasuki batas pengingat, satu email ringkasan dikirim ke penerima di bawah. Setiap dokumen hanya diingatkan sekali per batas.',
+          actions: (admin ? `<button type="button" class="btn btn-outline" id="pg-uji">${icon('mail', 17)} Kirim email uji ke saya</button>
+            <button type="button" class="btn btn-primary" id="pg-run">${icon('refresh-cw', 17)} Jalankan sekarang</button>` : '')
+        })}
+        <div id="pg-body">${this.st.data ? '' : `<div class="card"><div class="mini-empty">${icon('refresh-cw', 18)}<span>Memuat status pengingat…</span></div></div>`}</div>`;
+      if (admin) {
+        UI.$('#pg-uji', el).onclick = () => this.uji(el);
+        UI.$('#pg-run', el).onclick = () => this.jalankan(el);
+      }
+      if (this.st.data) this.tampil(el);
+      await this.muat(el);
+    },
+
+    async muat(el) {
+      try { this.st.data = await API.call('pengingat.status'); }
+      catch (e) { if (!this.st.data) UI.$('#pg-body', el).innerHTML = `<div class="note err">${icon('triangle-alert', 16)}<span>${esc(e.message)}</span></div>`; return; }
+      this.tampil(el); // aman bila halaman sudah berganti: #pg-body tidak ada → tidak menggambar
+    },
+
+    tampil(el) {
+      const d = this.st.data, admin = DATA.can('pengingat', 'w');
+      const body = UI.$('#pg-body', el);
+      if (!body || !d) return;
+      const jenisDari = (id) => /^MOU-/.test(id) ? 'mou' : /^MOA-/.test(id) ? 'moa' : /^IA-/.test(id) ? 'ia' : '';
+      const docOf = (id) => { const k = jenisDari(id); return k ? DATA.byId(k, id) : null; };
+      const terkirim = {};
+      d.log.forEach((l) => { if (/^Terkirim/.test(l.Keterangan)) { const key = l.ID_Dokumen + '|' + l.Tanggal_Akhir; if (!terkirim[key]) terkirim[key] = l; } });
+      const akan = {}; d.akanDikirim.forEach((x) => { akan[x.id] = x; });
+      const batasTxt = (b) => b + ' bulan';
+
+      const trig = d.trigger === true ? `<span class="badge st-aktif">${icon('circle-check', 13)} Aktif</span>`
+        : d.trigger === false ? `<span class="badge st-kadaluarsa">${icon('circle-x', 13)} Belum terpasang</span>`
+          : `<span class="badge pr-batal">Tidak dapat dicek</span>`;
+      const t = d.terakhir;
+      const hasilCls = t && t.hasil ? ({ terkirim: 'st-aktif', kosong: 'pr-batal', kuota: 'st-segera', tanpa_penerima: 'st-kadaluarsa' }[t.hasil.status] || 'pr-batal') : '';
+      const hasilLbl = t && t.hasil ? ({ terkirim: 'Email terkirim', kosong: 'Tidak ada yang perlu dikirim', kuota: 'Kuota habis', tanpa_penerima: 'Tanpa penerima' }[t.hasil.status] || t.hasil.status) : '';
+
+      const rows = d.segera.map((s) => {
+        const a = akan[s.id];
+        const sudah = terkirim[s.id + '|' + s.akhir];
+        const st = a ? `<span class="badge st-akan">${icon('mail', 12)} Masuk email berikutnya • batas ${batasTxt(a.batas)}</span>`
+          : sudah ? `<span class="badge st-aktif">${icon('circle-check', 12)} Sudah diingatkan ${esc(sudah.Jenis_Pengingat.replace(/^H-(\d+)B$/, '$1 bln'))} • ${esc(UI.tgl(String(sudah.Tanggal_Kirim).slice(0, 10)))}</span>`
+            : `<span class="badge pr-batal">Menunggu batas berikutnya</span>`;
+        return `<li><button type="button" data-doc="${s.jenis}:${esc(s.id)}">
+          ${DATA.docChip(s.jenis)}<span class="tree-main"><span class="mono sm">${DATA.nomorHtml(s.nomor)}</span><span class="t-strong clamp1">${esc(s.mitra)}</span></span>
+          <span class="rem-when"><b>${esc(UI.tgl(s.akhir))}</b><small>${s.hari === 0 ? 'hari ini' : s.hari + ' hari lagi'}</small></span>
+          <span class="rem-st">${st}</span></button></li>`;
+      }).join('');
+
+      const logRows = (this.st.semuaLog ? d.log : d.log.slice(0, 30)).map((l) => {
+        const doc = docOf(l.ID_Dokumen), k = jenisDari(l.ID_Dokumen);
+        return `<li class="${/^Terkirim/.test(l.Keterangan) ? '' : 'muted-row'}">
+          <span class="rem-date mono sm">${esc(String(l.Tanggal_Kirim).replace(' ', ' • '))}</span>
+          <span class="rem-doc">${k ? DATA.docChip(k) : ''}${doc ? `<button type="button" class="link-btn" data-doc="${k}:${esc(l.ID_Dokumen)}">${DATA.nomorHtml(doc._nomor)}</button><span class="t-sub clamp1">${esc(doc.Mitra)}</span>` : `<span class="mono sm">${esc(l.ID_Dokumen)}</span><span class="t-sub">(dokumen sudah dihapus)</span>`}</span>
+          <span class="rem-b"><span class="chip">${esc(String(l.Jenis_Pengingat).replace(/^H-(\d+)B$/, 'Batas $1 bulan'))}</span><span class="t-sub">${esc(l.Keterangan)}</span></span></li>`;
+      }).join('');
+
+      body.innerHTML = `
+        ${d.trigger === false ? `<div class="note err">${icon('triangle-alert', 16)}<span><b>Pemeriksaan harian belum terpasang</b>, sehingga email pengingat tidak pernah terkirim. ${admin ? 'Tekan <b>Pasang jadwal harian</b> di bawah.' : 'Minta Admin memasangnya dari halaman ini.'}</span></div>` : ''}
+        ${!d.urlAplikasi ? `<div class="note warn">${icon('info', 16)}<span>Kunci <code>URL_APLIKASI</code> di sheet Konfigurasi masih kosong, jadi email tidak memuat tombol <b>Buka SIMPEKA</b>. Isi dengan alamat situs, misalnya <code>https://humasftsp.github.io/simpeka/</code>.</span></div>` : ''}
+        <div class="grid g-4 rem-stats">
+          <div class="card rem-stat"><span class="kpi-label">Jadwal harian</span><div class="rem-v">${trig}</div><p class="t-sub">Setiap hari ±${esc(d.jam)}</p>
+            ${admin && d.trigger !== true ? `<button type="button" class="btn btn-sm btn-primary" id="pg-pasang">${icon('clock', 15)} Pasang jadwal harian</button>` : ''}</div>
+          <div class="card rem-stat"><span class="kpi-label">Penerima</span><div class="rem-v"><b>${d.penerima.length}</b> orang</div>
+            <p class="t-sub">${d.sumberPenerima === 'konfigurasi' ? 'Dari <code>PENERIMA_PENGINGAT</code>' : 'Otomatis: semua Admin & Wakil Dekan IV aktif'}</p>
+            <ul class="rem-mails">${d.penerima.map((e) => `<li>${icon('mail', 12)} ${esc(e)}</li>`).join('')}</ul></div>
+          <div class="card rem-stat"><span class="kpi-label">Batas pengingat</span><div class="rem-v">${d.ambang.map((b) => `<span class="chip chip-blue">${b} bln</span>`).join(' ')}</div>
+            <p class="t-sub">sebelum tanggal akhir • ${d.pengingatIA ? 'MoU, MoA & IA' : 'MoU & MoA saja'}</p></div>
+          <div class="card rem-stat"><span class="kpi-label">Pemeriksaan terakhir</span>
+            ${t ? `<div class="rem-v"><span class="badge ${hasilCls}">${esc(hasilLbl)}</span></div><p class="t-sub">${esc(t.waktu)} WIB<br>${esc(t.hasil && t.hasil.pesan || '')}</p>`
+              : `<div class="rem-v muted">Belum tercatat</div><p class="t-sub">Tercatat mulai pemeriksaan berikutnya.</p>`}
+            ${d.kuota !== null ? `<p class="t-sub">Sisa kuota email hari ini: ${d.kuota}</p>` : ''}</div>
+        </div>
+
+        <section class="card list-card">
+          <div class="list-head"><h2 class="card-title">Berakhir dalam ${d.ambang[0] || 6} bulan ke depan</h2><span class="chip">${d.segera.length} dokumen</span>
+            ${d.akanDikirim.length ? `<span class="chip chip-warn">${d.akanDikirim.length} masuk email berikutnya</span>` : ''}</div>
+          ${rows ? `<ul class="tree rem-list pad-all">${rows}</ul>` : UI.empty('Tidak ada dokumen yang mendekati masa berakhir', 'Email pengingat baru dikirim saat ada dokumen yang sisa masanya ' + (d.ambang[0] || 6) + ' bulan atau kurang.')}
+        </section>
+
+        <section class="card list-card">
+          <div class="list-head"><h2 class="card-title">Riwayat email pengingat</h2><span class="chip">${d.log.length}</span><span class="spacer"></span>
+            <button type="button" class="btn btn-ghost btn-sm" id="pg-ref">${icon('refresh-cw', 15)} Muat ulang</button></div>
+          ${logRows ? `<ul class="rem-log">${logRows}</ul>${d.log.length > 30 && !this.st.semuaLog ? `<div class="pager"><button type="button" class="btn btn-ghost btn-sm" id="pg-all">Tampilkan semua (${d.log.length})</button></div>` : ''}`
+            : UI.empty('Belum ada email pengingat', 'Riwayat tercatat di sheet Log_Email setiap kali email terkirim.')}
+        </section>`;
+
+      body.onclick = (e) => {
+        const dc = e.target.closest('[data-doc]');
+        if (dc) { const [k, i] = dc.dataset.doc.split(':'); if (DATA.byId(k, i)) DOCSUI.docDetail(k, i); else UI.toast('Dokumen tidak ditemukan (mungkin sudah dihapus).', 'warn'); }
+      };
+      const ref = UI.$('#pg-ref', el); if (ref) ref.onclick = async () => { ref.classList.add('spinning'); await this.muat(el); };
+      const all = UI.$('#pg-all', el); if (all) all.onclick = () => { this.st.semuaLog = true; this.tampil(el); };
+      const pas = UI.$('#pg-pasang', el);
+      if (pas) pas.onclick = async () => {
+        UI.loading(true, 'Memasang jadwal harian…');
+        try { const r = await API.call('pengingat.pasangTrigger'); UI.toast(r.trigger ? 'Jadwal harian terpasang (±06.00 WIB)' : 'Jadwal belum terdeteksi; jalankan pasangTrigger di editor Apps Script', r.trigger ? undefined : 'warn'); await this.muat(el); }
+        catch (er) { UI.toast(er.message, 'error'); }
+        finally { UI.loading(false); }
+      };
+    },
+
+    async uji(el) {
+      const ok = await UI.confirmDlg({ title: 'Kirim email uji?', message: 'Email contoh pengingat dikirim hanya ke <b>' + esc(STATE.user.email) + '</b>. Riwayat dan jadwal pengingat asli tidak berubah.', okText: 'Kirim email uji' });
+      if (!ok) return;
+      UI.loading(true, 'Mengirim email uji…');
+      try {
+        const r = await API.call('pengingat.uji');
+        UI.toast('Email uji terkirim ke ' + r.ke + ' — periksa juga folder Spam');
+      } catch (e) { UI.toast(e.message, 'error'); }
+      finally { UI.loading(false); }
+    },
+
+    async jalankan(el) {
+      const n = this.st.data ? this.st.data.akanDikirim.length : 0;
+      const ok = await UI.confirmDlg({
+        title: 'Jalankan pemeriksaan sekarang?',
+        message: n ? n + ' dokumen akan dikirim dalam satu email ke ' + this.st.data.penerima.length + ' penerima, lalu tidak dikirim lagi pada pemeriksaan pukul 06.00 berikutnya.' : 'Saat ini tidak ada dokumen yang baru mencapai batas, jadi kemungkinan tidak ada email yang dikirim. Status masa berlaku di sheet tetap diperbarui.',
+        okText: 'Jalankan'
+      });
+      if (!ok) return;
+      UI.loading(true, 'Memeriksa & mengirim…');
+      try {
+        const r = await API.call('pengingat.jalankan');
+        UI.toast(r && r.pesan ? r.pesan : 'Selesai', r && r.status === 'terkirim' ? undefined : 'warn');
+        await this.muat(el);
+      } catch (e) { UI.toast(e.message, 'error'); }
+      finally { UI.loading(false); }
+    }
+  };
+
+  // =========================================================================
   // IMPOR DATA (Admin) — dari Excel ekspor SIMKERMA
   // =========================================================================
   const impor = {
@@ -971,5 +1114,5 @@ const PAGES = (() => {
     }
   };
 
-  return { dashboard, mitra, mou: docPage('mou'), moa: docPage('moa'), ia: docPage('ia'), promosi, kalender, laporan, impor, pengguna };
+  return { dashboard, mitra, mou: docPage('mou'), moa: docPage('moa'), ia: docPage('ia'), promosi, kalender, laporan, pengingat, impor, pengguna };
 })();

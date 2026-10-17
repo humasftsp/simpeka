@@ -932,3 +932,31 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; min-height:
   .list-head.wrap .seg { margin-left: 0; width: 100%; }
   .tree-l2 { padding-left: 28px; }
 }
+
+/* pengingat email */
+.rem-stat { display: flex; flex-direction: column; gap: 6px; padding: 18px; }
+.rem-stat .btn { align-self: flex-start; margin-top: 4px; }
+.rem-v { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 15px; min-height: 28px; }
+.rem-v b { font-size: 26px; font-weight: 800; letter-spacing: -.02em; }
+.rem-stat .t-sub code, .note code { font-size: 12px; }
+.rem-mails { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--text-2); word-break: break-all; }
+.rem-mails li { display: flex; gap: 6px; align-items: center; }
+.pad-all { padding: 16px 24px 20px; margin: 0; }
+.rem-list button { flex-wrap: wrap; }
+.rem-when { display: flex; flex-direction: column; align-items: flex-end; font-size: 13px; white-space: nowrap; }
+.rem-when small { color: var(--muted); font-size: 12px; }
+.rem-st { flex-basis: 260px; display: flex; justify-content: flex-end; }
+.rem-st .badge { white-space: normal; text-align: left; }
+.rem-log { list-style: none; margin: 0; padding: 0; }
+.rem-log li { display: grid; grid-template-columns: 150px minmax(0, 1.3fr) minmax(0, 1fr); gap: 14px; align-items: start; padding: 12px 24px; border-bottom: 1px solid var(--divider); font-size: 13px; }
+.rem-log li.muted-row { opacity: .7; }
+.rem-date { color: var(--text-2); padding-top: 3px; }
+.rem-doc, .rem-b { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; }
+.rem-doc .chip-doc { margin-bottom: 2px; }
+@media (max-width: 1023px) {
+  .rem-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pad-all { padding: 12px 12px 16px; }
+  .rem-st { flex-basis: 100%; justify-content: flex-start; }
+  .rem-log li { grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 12px 16px; }
+}
+@media (max-width: 420px) { .rem-stats { grid-template-columns: minmax(0, 1fr); } }

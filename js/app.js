@@ -14,6 +14,7 @@ const APP = (() => {
     { id: 'promosi', label: 'Promosi Sekolah', short: 'Promosi', icon: 'megaphone', allow: () => DATA.can('promosi', 'r') },
     { id: 'kalender', label: 'Kalender', short: 'Kalender', icon: 'calendar-days', allow: () => DATA.can('promosi', 'r') || DATA.can('ks', 'r') },
     { id: 'laporan', label: 'Laporan', short: 'Laporan', icon: 'file-text', allow: () => DATA.can('laporan', 'r') },
+    { id: 'pengingat', label: 'Pengingat Email', short: 'Pengingat', icon: 'mail', allow: () => DATA.can('pengingat', 'r') },
     { id: 'impor', label: 'Impor Data Excel', short: 'Impor', icon: 'upload', allow: () => DATA.can('impor', 'w') },
     { id: 'pengguna', label: 'Pengguna', short: 'Pengguna', icon: 'users', allow: () => DATA.can('pengguna', 'r') }
   ];

@@ -18,7 +18,7 @@ D. Login pertama, daftarkan pengguna, uji
 
 Perkiraan waktu: 30–45 menit untuk pertama kali.
 
-> **Sudah memakai SIMPEKA?** Langsung ke bagian **Pembaruan ke Versi 2** (U1–U7) di bawah — tidak perlu mengulang Tahap A–D. Instalasi baru cukup Tahap A–D; `setupAppEnvironment` langsung membuat struktur versi 2.
+> **Sudah memakai SIMPEKA?** Langsung ke bagian **Pembaruan ke Versi 2** (U1–U8) di bawah — tidak perlu mengulang Tahap A–D. Instalasi baru cukup Tahap A–D; `setupAppEnvironment` langsung membuat struktur versi 2.
 
 ---
 
@@ -89,7 +89,21 @@ Ketiga berkas yang Anda kirim sudah diuji dengan sistem ini:
 
 Isian `-` di kolom PIC dibaca sebagai kosong. Tautan `URL DOKUMEN` disimpan apa adanya (mengarah ke SIMKERMA, alamat `http://`).
 
-### U7. Bersihkan
+### U7. Periksa pengingat email
+Menu **Pengingat Email** (Admin dan WD IV dapat melihat; tombol hanya untuk Admin) menampilkan:
+- **Jadwal harian**: *Aktif* berarti pemeriksaan otomatis ±06.00 WIB sudah terpasang. Bila *Belum terpasang*, tekan **Pasang jadwal harian**.
+- **Penerima**: bila `PENERIMA_PENGINGAT` kosong, email dikirim ke semua Admin dan Wakil Dekan IV yang aktif.
+- **Berakhir dalam 6 bulan ke depan**: status tiap dokumen — *Masuk email berikutnya*, *Sudah diingatkan*, atau *Menunggu batas berikutnya*.
+- **Riwayat email pengingat** (isi sheet `Log_Email`).
+
+Lakukan uji ini sekali:
+1. Isi `URL_APLIKASI` di sheet `Konfigurasi` dengan `https://humasftsp.github.io/simpeka/` agar email memuat tombol **Buka SIMPEKA**.
+2. Tekan **Kirim email uji ke saya** → periksa kotak masuk **dan folder Spam**. Email uji tidak mengubah riwayat, jadi pengingat asli tetap terkirim.
+3. Bila daftar menunjukkan dokumen *Masuk email berikutnya*, Anda boleh menekan **Jalankan sekarang** agar tidak menunggu besok pagi. Aman ditekan berulang: dokumen yang sudah diingatkan tidak dikirim lagi.
+
+> Email pengingat **hanya** dikirim bila ada dokumen yang sisa masanya baru mencapai 6, 3, atau 1 bulan. Dokumen yang masih lama berlaku (mis. berakhir 2030) belum akan muncul di email.
+
+### U8. Bersihkan
 - Bila sebelumnya menjalankan `isiDataContoh` pada versi 2, jalankan **`hapusDataContoh`** sebelum impor data asli.
 - Sheet `Arsip v1 - …` boleh dihapus manual dari spreadsheet setelah Anda yakin tidak memerlukannya.
 - Periksa daftar di sheet `Konfigurasi` (lihat B2): `JENIS_MITRA`, `KATEGORI_MITRA`, `PENGGUNA_UNIT`.
@@ -281,7 +295,7 @@ Menu **Pengguna** → **Tambah pengguna** → email, nama, peran. Biarkan **"Kir
 | 4 | WD IV membuka MoU/MoA | Tidak ada tombol hapus; menu Impor tidak ada |
 | 5 | Tim Promosi membuka `…/simpeka/#/mou` langsung | Dialihkan ke Dashboard |
 | 6 | `isiDataContoh` | Empat status dengan warna berbeda |
-| 7 | Jalankan `dailyCheck` dua kali di editor | Email hanya terkirim sekali (cek `Log_Email`) |
+| 7 | Menu **Pengingat Email** → *Kirim email uji ke saya*, lalu *Jalankan sekarang* dua kali | Email uji masuk; email asli hanya terkirim sekali (riwayat bertambah sekali) |
 | 8 | Tambah promosi | Muncul di Kalender pada tanggal rencana |
 | 9 | Tambah IA ke MoA, IA ke MoU, IA mandiri | Kolom IA pada MoA/MoU bertambah |
 | 9b | Impor Excel MoU → MoA → IA | Hasil pemeriksaan sesuai U6; data muncul di menu masing-masing |
@@ -321,7 +335,7 @@ Jangan memilih *New deployment* — itu menghasilkan URL `/exec` baru yang belum
 | "Akun dikunci sampai pukul …" | 5 kali salah berturut-turut | Tunggu 15 menit atau minta Admin mereset |
 | "Akun ini sedang dinonaktifkan" | Status Nonaktif | Admin mengaktifkan di halaman Pengguna |
 | Diminta login ulang | Sesi berakhir setelah 6 jam tanpa aktivitas, atau kata sandi baru saja diganti/direset | Normal |
-| Email kata sandi/pengingat tidak masuk | Masuk Spam, atau kuota email harian habis | Cek Spam; sampaikan kata sandi langsung; cek sheet `Log_Email` |
+| Email kata sandi/pengingat tidak masuk | Masuk Spam, kuota email harian habis, jadwal harian belum terpasang, atau memang belum ada dokumen yang mencapai batas | Buka menu **Pengingat Email**: cek *Jadwal harian*, *Penerima*, dan daftar *Berakhir dalam 6 bulan*; tekan **Kirim email uji ke saya**; cek folder Spam |
 | Semua kata sandi tiba-tiba tidak berlaku | Script Properties dihapus (kunci `PEPPER` hilang) | Jalankan `resetSandiAdmin`, lalu reset pengguna lain dari aplikasi |
 | Situs 404 | `index.html` tidak di akar repository | Lihat C2; push ulang dari folder yang benar |
 | Halaman tampil tanpa gaya | Folder `css/` dan `js/` tidak ikut | Selalu push lewat git, jangan "Upload files" di web GitHub |
