@@ -1,55 +1,80 @@
 /**
- * STATE & DATA — penyimpanan data di memori, kolom turunan, dan operasi
- * simpan/hapus/berkas yang dipakai semua halaman.
+ * STATE & DATA — data di memori, relasi Mitra → MoU → MoA → IA, kolom turunan,
+ * dan operasi simpan/hapus/berkas yang dipakai semua halaman.
  */
+const F_DOK = () => ({ q: '', status: '', kategori: '', lingkup: '', tahun: '', bidang: '', relasi: '', sort: 'Akhir', dir: 1, page: 1 });
 const STATE = {
-  user: null, perms: {}, options: {}, ks: [], ia: [], promosi: [], pengguna: [], loadedAt: null,
+  user: null, perms: {}, options: {}, mitra: [], mou: [], moa: [], ia: [], promosi: [], pengguna: [], loadedAt: null,
   f: {
-    ks: { q: '', status: '', jenisMitra: '', jenisMoU: '', tahun: '', ia: '', sort: 'Akhir', dir: 1, page: 1 },
-    ia: { q: '', tab: '', tahun: '', sort: 'Tanggal_IA', dir: -1, page: 1 },
+    mou: F_DOK(), moa: F_DOK(), ia: F_DOK(),
+    mitra: { q: '', kategori: '', lingkup: '', jenis: '', sort: 'Nama_Mitra', dir: 1, page: 1 },
     promosi: { q: '', status: '', bulan: '', sort: '_tgl', dir: -1, page: 1 },
-    kal: { mode: '', y: null, m: null, sel: null, jenisMitra: '', status: '' },
+    kal: { mode: '', y: null, m: null, sel: null, dok: '', kategori: '', status: '' },
     users: { q: '' }
   }
 };
 
 const DATA = (() => {
   const { esc, icon } = UI;
+
+  /** Metadata dokumen kerja sama */
+  const DOCS = {
+    mou: { key: 'mou', id: 'ID_MoU', nomor: 'Nomor_MoU', label: 'MoU', nama: 'Nota Kesepahaman (MoU)', perm: 'ks', link: 'Link_Dokumen', icon: 'handshake' },
+    moa: { key: 'moa', id: 'ID_MoA', nomor: 'Nomor_MoA', label: 'MoA', nama: 'Perjanjian Kerja Sama (MoA)', perm: 'ks', link: 'Link_Dokumen', icon: 'file-text' },
+    ia: { key: 'ia', id: 'ID_IA', nomor: 'Nomor_IA', label: 'IA', nama: 'Implementation Agreement (IA)', perm: 'ia', link: 'Link_Dokumen', icon: 'file-check' }
+  };
+  const DOC_KEYS = ['mou', 'moa', 'ia'];
   const KEYS = {
-    ks: { id: 'ID_Kerja_Sama', link: 'Link_Bukti', label: 'kerja sama' },
-    ia: { id: 'ID_IA', link: 'Link_Berkas', label: 'IA' },
+    mou: DOCS.mou, moa: DOCS.moa, ia: DOCS.ia,
+    mitra: { id: 'ID_Mitra', label: 'mitra' },
     promosi: { id: 'ID_Promosi', link: 'Link_Bukti', label: 'kegiatan promosi' }
   };
+  const TRIDARMA = [['Dikjar', 'Dikjar'], ['Penelitian', 'Penelitian'], ['PkM', 'PkM'], ['Non_Tridarma', 'Non Tridarma']];
   const PERAN_LABEL = { Admin: 'Admin Sekretariat', WD_IV: 'Wakil Dekan IV', Tim_Promosi: 'Tim Promosi' };
   const PAGE_SIZE = 12;
 
   const can = (res, op) => ((STATE.perms || {})[res] || '').indexOf(op) >= 0;
 
-  /** Hitung ulang kolom turunan di sisi klien (selalu segar terhadap tanggal hari ini). */
+  /** Hitung ulang relasi & kolom turunan di sisi klien (selalu segar terhadap tanggal hari ini). */
   function derive() {
     const am = STATE.options.ambang;
-    const iaCount = {};
-    (STATE.ia || []).forEach((r) => { if (r.ID_Kerja_Sama) iaCount[r.ID_Kerja_Sama] = (iaCount[r.ID_Kerja_Sama] || 0) + 1; });
-    const ksMap = {};
-    (STATE.ks || []).forEach((r) => {
+    const mitra = {};
+    (STATE.mitra || []).forEach((m) => { mitra[m.ID_Mitra] = m; m._mou = 0; m._moa = 0; m._ia = 0; m._berlaku = 0; });
+    const mou = {}, moa = {};
+    DOC_KEYS.forEach((k) => (STATE[k] || []).forEach((r) => {
+      r._k = k;
+      r._nomor = r[DOCS[k].nomor];
       r.Status_Masa = UI.statusMasa(r.Akhir, am);
-      r._ia = iaCount[r.ID_Kerja_Sama] || 0;
-      r.Ceklis_IA = r._ia ? 'Ada' : 'Belum Ada';
       r._sisa = UI.sisaHari(r.Akhir);
-      ksMap[r.ID_Kerja_Sama] = r;
+      r._m = mitra[r.ID_Mitra] || { Nama_Mitra: r.Mitra };
+      if (mitra[r.ID_Mitra]) r.Mitra = mitra[r.ID_Mitra].Nama_Mitra;
+      r._anakMoa = []; r._anakIa = []; r._iaTotal = 0;
+      if (k === 'mou') mou[r.ID_MoU] = r;
+      if (k === 'moa') moa[r.ID_MoA] = r;
+      const m = mitra[r.ID_Mitra];
+      if (m) { m['_' + k]++; if (r.Status_Masa !== 'Kadaluarsa') m._berlaku++; }
+    }));
+    (STATE.moa || []).forEach((r) => {
+      r._induk = r.ID_MoU ? mou[r.ID_MoU] || null : null;
+      if (r._induk) { r._induk._anakMoa.push(r); r.Nomor_MoU = r._induk.Nomor_MoU; }
     });
-    (STATE.ia || []).forEach((r) => { if (r.ID_Kerja_Sama && ksMap[r.ID_Kerja_Sama]) r.Mitra = ksMap[r.ID_Kerja_Sama].Mitra; });
+    (STATE.ia || []).forEach((r) => {
+      r._induk = r.Jenis_Induk === 'MoU' ? mou[r.ID_Induk] || null : r.Jenis_Induk === 'MoA' ? moa[r.ID_Induk] || null : null;
+      if (r._induk) { r._induk._anakIa.push(r); r.Nomor_Induk = r._induk._nomor; }
+    });
+    (STATE.moa || []).forEach((r) => { r._iaTotal = r._anakIa.length; });
+    (STATE.mou || []).forEach((r) => { r._iaTotal = r._anakIa.length + r._anakMoa.reduce((n, a) => n + a._anakIa.length, 0); });
     (STATE.promosi || []).forEach((r) => { r._tgl = r.Tanggal_Realisasi || r.Tanggal_Rencana; });
   }
 
   const list = (jenis) => STATE[jenis] || [];
   const byId = (jenis, id) => list(jenis).find((r) => r[KEYS[jenis].id] === id);
+  const allDocs = () => DOC_KEYS.reduce((a, k) => a.concat(list(k)), []);
   function upsert(jenis, rec) {
     const k = KEYS[jenis].id;
     const arr = list(jenis);
     const i = arr.findIndex((r) => r[k] === rec[k]);
     if (i >= 0) arr[i] = Object.assign(arr[i], rec); else arr.push(rec);
-    derive();
   }
   function remove(jenis, id) {
     STATE[jenis] = list(jenis).filter((r) => r[KEYS[jenis].id] !== id);
@@ -63,7 +88,9 @@ const DATA = (() => {
     UI.loading(true, 'Menyimpan data…');
     try {
       const rec = await API.call(jenis + '.save', data);
+      if (rec._mitra) { upsert('mitra', rec._mitra); delete rec._mitra; }
       upsert(jenis, rec);
+      derive();
       if (file) {
         UI.loading(true, 'Mengunggah berkas (' + UI.fmtSize(file.size) + ')…');
         try {
@@ -77,17 +104,17 @@ const DATA = (() => {
           return rec;
         }
       }
-      UI.toast((baru ? 'Data baru disimpan' : 'Perubahan disimpan') + ' • ' + rec[k.id]);
+      UI.toast((baru ? 'Data baru disimpan' : 'Perubahan disimpan') + ' • ' + (rec[k.nomor] || rec.Nama_Mitra || rec[k.id]));
       return rec;
     } finally {
       UI.loading(false);
     }
   }
 
-  async function del(jenis, id) {
+  async function del(jenis, id, nama) {
     const ok = await UI.confirmDlg({
-      title: 'Hapus ' + id + '?',
-      message: 'Data ' + KEYS[jenis].label + ' ini akan dihapus dari database. Berkas terkait dipindahkan ke Sampah Google Drive dan masih bisa dipulihkan selama 30 hari.',
+      title: 'Hapus ' + (nama || id) + '?',
+      message: 'Data ' + KEYS[jenis].label + ' ini akan dihapus dari database.' + (KEYS[jenis].link ? ' Berkas yang diunggah ke Drive SIMPEKA dipindahkan ke Sampah dan masih bisa dipulihkan selama 30 hari.' : ''),
       okText: 'Hapus', danger: true
     });
     if (!ok) return false;
@@ -95,7 +122,7 @@ const DATA = (() => {
     try {
       await API.call(jenis + '.delete', { id: id });
       remove(jenis, id);
-      UI.toast(id + ' dihapus');
+      UI.toast('Data dihapus');
       return true;
     } catch (e) {
       UI.toast(e.message, 'error');
@@ -105,10 +132,16 @@ const DATA = (() => {
     }
   }
 
+  /** Berkas dari Drive SIMPEKA dibuka di penampil; tautan luar (mis. SIMKERMA) dibuka di tab baru. */
   async function berkas(jenis, id) {
+    const rec = byId(jenis, id) || {};
+    const link = rec[KEYS[jenis].link] || '';
+    if (link && !/(drive|docs)\.google\.com/.test(link)) { window.open(link, '_blank', 'noopener'); return; }
     UI.loading(true, 'Mengambil berkas…');
-    try { UI.viewFile(await API.call('file.get', { jenis: jenis, id: id })); }
-    catch (e) { UI.toast(e.message, 'error'); }
+    try {
+      const f = await API.call('file.get', { jenis: jenis, id: id });
+      if (f.url) window.open(f.url, '_blank', 'noopener'); else UI.viewFile(f);
+    } catch (e) { UI.toast(e.message, 'error'); }
     finally { UI.loading(false); }
   }
 
@@ -125,11 +158,9 @@ const DATA = (() => {
     const l = typeof o === 'object' ? o.label : o;
     return `<option value="${esc(v)}" ${String(v) === String(val) ? 'selected' : ''}>${esc(l)}</option>`;
   }
-  /** select untuk filter (pakai id) */
   function select(id, ph, options, val, label) {
     return `<div class="select-wrap"><select id="${id}" class="select" aria-label="${esc(label || ph)}"><option value="">${esc(ph)}</option>${options.map((o) => opt(o, val)).join('')}</select>${icon('chevron-down', 16, 'sel-caret')}</div>`;
   }
-  /** select untuk form (pakai name) */
   function selectNamed(name, id, ph, options, val) {
     return `<div class="select-wrap"><select id="${id}" name="${name}" class="select"><option value="">${esc(ph)}</option>${options.map((o) => opt(o, val)).join('')}</select>${icon('chevron-down', 16, 'sel-caret')}</div>`;
   }
@@ -158,7 +189,7 @@ const DATA = (() => {
   function pager(total, f, pages, start) {
     if (!total) return '';
     const to = Math.min(start + PAGE_SIZE, total);
-    let nums = [];
+    const nums = [];
     for (let i = 1; i <= pages; i++) if (i === 1 || i === pages || Math.abs(i - f.page) <= 1) nums.push(i);
     const btns = [];
     nums.forEach((n, i) => {
@@ -170,13 +201,17 @@ const DATA = (() => {
       <button class="pg" data-page="${f.page + 1}" ${f.page >= pages ? 'disabled' : ''} aria-label="Berikutnya">${icon('chevron-right', 16)}</button></div>` : ''}</div>`;
   }
 
-  const chipMoU = (j) => `<span class="chip ${j === 'MoA' ? 'chip-violet' : 'chip-blue'}">${esc(j)}</span>`;
-  const iaChip = (r) => r._ia ? `<span class="chip chip-green">${icon('check', 13)} ${r._ia} IA</span>` : '<span class="chip chip-warn">Belum ada IA</span>';
+  const docChip = (k) => `<span class="chip chip-doc doc-${k}">${DOCS[k].label}</span>`;
+  const lingkupChip = (l) => l ? `<span class="chip ${l === 'Internasional' ? 'chip-blue' : l === 'Lokal' ? 'chip-violet' : ''}">${l === 'Internasional' ? icon('globe', 12) : ''}${esc(l)}</span>` : '';
+  const bidangText = (r) => TRIDARMA.filter(([k]) => r[k]).map(([, l]) => l).join(', ');
+  const bidangChips = (r) => TRIDARMA.filter(([k]) => r[k]).map(([, l]) => `<span class="chip">${l}</span>`).join('');
+  /** Nomor surat boleh terpotong baris hanya setelah '/' (bukan di tengah angka). */
+  const nomorHtml = (n) => UI.esc(n).replace(/\//g, '/<wbr>');
   const matchQ = (q, fields) => { q = q.toLowerCase(); return fields.some((x) => String(x || '').toLowerCase().indexOf(q) >= 0); };
-  const MITRA_COLORS = ['var(--c1)', 'var(--c2)', 'var(--c3)', 'var(--c4)', 'var(--c5)', 'var(--c6)'];
+  const PALET = ['var(--c1)', 'var(--c2)', 'var(--c3)', 'var(--c4)', 'var(--c5)', 'var(--c6)'];
 
   return {
-    KEYS, PERAN_LABEL, can, derive, byId, upsert, remove, save, del, berkas,
-    head, select, selectNamed, sortTh, sortRows, paginate, pager, chipMoU, iaChip, matchQ, MITRA_COLORS
+    DOCS, DOC_KEYS, KEYS, TRIDARMA, PERAN_LABEL, PALET, can, derive, byId, allDocs, upsert, remove, save, del, berkas,
+    head, select, selectNamed, sortTh, sortRows, paginate, pager, docChip, lingkupChip, bidangText, bidangChips, matchQ, nomorHtml
   };
 })();

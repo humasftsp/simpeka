@@ -6,8 +6,10 @@ Frontend statis (HTML/CSS/JavaScript tanpa framework) untuk GitHub Pages. Backen
 
 ## Fitur
 
-- Manajemen kerja sama (MoU/MoA) dengan status masa berlaku otomatis: Aktif, Akan Berakhir, Segera Berakhir, Kadaluarsa
-- Implementation Agreement (IA), terhubung ke MoU/MoA atau berdiri sendiri
+- Master Mitra (jenis IKU, kategori, lingkup, negara, benua, PIC) sebagai acuan tunggal untuk semua dokumen
+- MoU, MoA, dan IA dengan kolom format SIMKERMA dan status masa berlaku otomatis: Aktif, Akan Berakhir, Segera Berakhir, Kadaluarsa
+- Relasi dokumen: satu MoU → banyak MoA; MoA boleh tanpa MoU; IA menempel ke MoA, ke MoU, atau mandiri
+- Impor dari Excel SIMKERMA (diperiksa dulu sebelum disimpan) dan ekspor kembali ke Excel
 - Promosi sekolah beserta bukti kegiatan
 - Kalender terpadu: tanggal berakhir kerja sama dan jadwal promosi
 - Email pengingat otomatis 6, 3, dan 1 bulan sebelum berakhir
@@ -25,7 +27,9 @@ js/icons.js      ikon (subset Lucide, lisensi ISC)
 js/api.js        komunikasi dengan Apps Script
 js/ui.js         komponen tampilan
 js/data.js       data & operasi simpan/hapus
-js/forms.js      formulir & panel detail
+js/forms.js      formulir promosi & pengguna, validasi
+js/docs.js       formulir & panel detail Mitra, MoU, MoA, IA
+js/impor.js      baca/tulis Excel (SheetJS; cadangan lokal di js/vendor/)
 js/pages.js      halaman
 js/app.js        login, navigasi, router
 assets/          tempat logo resmi

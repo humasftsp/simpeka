@@ -1,20 +1,25 @@
 /**
  * APP — login (email + kata sandi), kerangka aplikasi, navigasi berbasis
- * peran, dan router hash (#/dashboard, #/kerjasama, ...).
+ * peran, dan router hash (#/dashboard, #/mou, #/moa, ...).
  */
 const APP = (() => {
   const { esc, icon, $ } = UI;
 
   const NAV = [
     { id: 'dashboard', label: 'Dashboard', short: 'Beranda', icon: 'layout-dashboard', allow: () => true },
-    { id: 'kerjasama', label: 'Kerja Sama (MoU/MoA)', short: 'MoU/MoA', icon: 'handshake', allow: () => DATA.can('ks', 'r') },
+    { id: 'mitra', label: 'Master Mitra', short: 'Mitra', icon: 'building-2', allow: () => DATA.can('ks', 'r') },
+    { id: 'mou', label: 'MoU', short: 'MoU', icon: 'handshake', allow: () => DATA.can('ks', 'r') },
+    { id: 'moa', label: 'MoA', short: 'MoA', icon: 'file-signature', allow: () => DATA.can('ks', 'r') },
     { id: 'ia', label: 'IA (Implementation)', short: 'IA', icon: 'file-check', allow: () => DATA.can('ia', 'r') },
     { id: 'promosi', label: 'Promosi Sekolah', short: 'Promosi', icon: 'megaphone', allow: () => DATA.can('promosi', 'r') },
     { id: 'kalender', label: 'Kalender', short: 'Kalender', icon: 'calendar-days', allow: () => DATA.can('promosi', 'r') || DATA.can('ks', 'r') },
     { id: 'laporan', label: 'Laporan', short: 'Laporan', icon: 'file-text', allow: () => DATA.can('laporan', 'r') },
+    { id: 'impor', label: 'Impor Data Excel', short: 'Impor', icon: 'upload', allow: () => DATA.can('impor', 'w') },
     { id: 'pengguna', label: 'Pengguna', short: 'Pengguna', icon: 'users', allow: () => DATA.can('pengguna', 'r') }
   ];
-  const FILTER_KEY = { kerjasama: 'ks', ia: 'ia', promosi: 'promosi', kalender: 'kal' };
+  /** Alamat lama (v1) tetap berfungsi. */
+  const ALIAS = { kerjasama: 'mou' };
+  const FILTER_KEY = { mitra: 'mitra', mou: 'mou', moa: 'moa', ia: 'ia', promosi: 'promosi', kalender: 'kal' };
   const DEFAULT_F = JSON.parse(JSON.stringify(STATE.f));
   let current = null;
   let shellReady = false;
@@ -250,7 +255,7 @@ const APP = (() => {
     const d = await API.call('bootstrap');
     Object.assign(STATE, {
       user: d.user, perms: d.perms, options: d.options,
-      ks: d.ks || [], ia: d.ia || [], promosi: d.promosi || [], pengguna: d.pengguna || [],
+      mitra: d.mitra || [], mou: d.mou || [], moa: d.moa || [], ia: d.ia || [], promosi: d.promosi || [], pengguna: d.pengguna || [],
       laporan: null, loadedAt: new Date()
     });
     DATA.derive();
@@ -268,14 +273,14 @@ const APP = (() => {
     }
   }
 
-  async function refresh() {
+  async function refresh(diam) {
     const b = $('#btn-refresh');
     b && b.classList.add('spinning');
     try {
       await loadData();
       renderView(true);
       updateChrome();
-      UI.toast('Data dimuat ulang');
+      if (diam !== true) UI.toast('Data dimuat ulang');
     } catch (e) {
       if (e.code !== 'AUTH' && e.code !== 'DENIED') UI.toast(e.message, 'error');
     } finally {
@@ -298,8 +303,10 @@ const APP = (() => {
   function renderShell() {
     const u = STATE.user;
     const items = NAV.filter((n) => n.allow());
-    const bottom = items.length > 5 ? items.slice(0, 4) : items;
-    const more = items.length > 5 ? items.slice(4) : [];
+    const PRIO = ['dashboard', 'mou', 'moa', 'ia', 'promosi', 'kalender'];
+    const utama = items.slice().sort((a, b) => (PRIO.indexOf(a.id) + 1 || 99) - (PRIO.indexOf(b.id) + 1 || 99));
+    const bottom = items.length > 5 ? utama.slice(0, 4) : items;
+    const more = items.length > 5 ? items.filter((n) => bottom.indexOf(n) < 0) : [];
     root().innerHTML = `
       <a href="#view" class="skip">Langsung ke konten</a>
       <div class="shell">
@@ -396,12 +403,14 @@ const APP = (() => {
     $('#sync').innerHTML = `<i></i>Dimuat ${String(t.getHours()).padStart(2, '0')}.${String(t.getMinutes()).padStart(2, '0')}`;
     const alert = $('#sb-alert');
     if (DATA.can('ks', 'r')) {
-      const n = STATE.ks.filter((r) => r.Status_Masa === 'Segera Berakhir').length;
+      const seg = DATA.allDocs().filter((r) => r.Status_Masa === 'Segera Berakhir');
+      const n = seg.length;
+      const tuju = (seg.find((r) => r._k === 'mou') || seg.find((r) => r._k === 'moa') || seg[0] || { _k: 'mou' })._k;
       alert.innerHTML = n ? `<div class="sb-alert"><div class="sba-t">${icon('triangle-alert', 16)} Peringatan masa aktif</div>
-        <p>${n} dokumen MoU/MoA berakhir kurang dari ${STATE.options.ambang.segera} bulan lagi.</p>
+        <p>${n} dokumen MoU/MoA/IA berakhir kurang dari ${STATE.options.ambang.segera} bulan lagi.</p>
         <button type="button" class="btn btn-sm btn-block" id="sba-go">Tinjau dokumen</button></div>` : '';
       const g = $('#sba-go');
-      if (g) g.onclick = () => go('kerjasama', { status: 'Segera Berakhir' });
+      if (g) g.onclick = () => go(tuju, { status: 'Segera Berakhir' });
     } else alert.innerHTML = '';
   }
 
@@ -413,6 +422,7 @@ const APP = (() => {
   function route() {
     if (!shellReady) return;
     let id = parseHash();
+    if (ALIAS[id]) { id = ALIAS[id]; history.replaceState(null, '', '#/' + id); }
     const nav = NAV.find((n) => n.id === id);
     if (!nav || !nav.allow()) {
       if (nav) UI.toast('Halaman tersebut tidak tersedia untuk peran Anda.', 'warn');
@@ -463,7 +473,11 @@ const APP = (() => {
   // =========================================================================
   function start() {
     UI.applyTheme();
-    const url = cfg().GAS_URL || '';
+    if (!window.SIMPEKA_CONFIG) {
+      return renderConfigError('js/config.js berisi kesalahan penulisan',
+        'Berkas <code>js/config.js</code> tidak bisa dibaca browser. Biasanya karena tanda kutip <code>\'</code> atau koma yang hilang. Bandingkan dengan contoh: <code>GAS_URL: \'https://script.google.com/macros/s/…/exec\',</code>');
+    }
+    const url = String(cfg().GAS_URL || '').trim();
     if (!url || /XXXX/.test(url) || !/^https:\/\/script\.google\.com\/.+\/exec$/.test(url)) {
       return renderConfigError('GAS_URL belum diatur',
         'Buka berkas <code>js/config.js</code> lalu isi <b>GAS_URL</b> dengan URL Web App Apps Script (berakhiran <code>/exec</code>).');

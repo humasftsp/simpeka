@@ -1,4 +1,4 @@
-# Panduan Instalasi SIMPEKA FTSP Universitas Trisakti
+# Panduan Instalasi SIMPEKA FTSP Universitas Trisakti — Versi 2
 
 SIMPEKA terdiri dari dua bagian yang dipasang terpisah:
 
@@ -18,17 +18,81 @@ D. Login pertama, daftarkan pengguna, uji
 
 Perkiraan waktu: 30–45 menit untuk pertama kali.
 
+> **Sudah memakai SIMPEKA?** Langsung ke bagian **Pembaruan ke Versi 2** (U1–U7) di bawah — tidak perlu mengulang Tahap A–D. Instalasi baru cukup Tahap A–D; `setupAppEnvironment` langsung membuat struktur versi 2.
+
 ---
 
-## Sudah memasang versi sebelumnya (login Google)?
+## Pembaruan ke Versi 2 — Master Mitra, MoU, MoA, IA (untuk instalasi yang sudah berjalan)
 
-Bila Tahap A versi lama sudah dijalankan, **jangan** menjalankan `setupAppEnvironment` lagi. Cukup:
+Versi 2 mengganti sheet lama `Kerja Sama` dan `IA` dengan struktur baru mengikuti format Excel SIMKERMA:
 
-1. Buka proyek Apps Script → ganti seluruh isi `Kode.gs` dengan versi baru → Simpan.
-2. Pilih fungsi **`buatSandiAwal`** → **Run**. Execution log menampilkan kata sandi sementara untuk setiap pengguna yang sudah terdaftar, termasuk Admin. Kolom kata sandi di sheet `Pengguna` ditambahkan otomatis.
-3. **Deploy** → **Manage deployments** → ikon pensil ✏️ → **Version: New version** → **Deploy**. URL `/exec` tetap sama.
-4. Pakai ZIP frontend yang baru (Tahap B–C). Bila repository GitHub sudah ada, cukup salin isi ZIP baru ke folder lama (jaga `js/config.js` yang sudah berisi `GAS_URL`), lalu `git add .`, `git commit -m "Login email + kata sandi"`, `git push`.
-5. Baris `GOOGLE_CLIENT_ID` di sheet `Konfigurasi` tidak dipakai lagi dan boleh dihapus. Proyek di Google Cloud Console juga boleh dihapus.
+| Sheet baru | Isi | Terhubung ke |
+| --- | --- | --- |
+| `Mitra` | Master mitra: nama, jenis (IKU), kategori, lingkup, negara, benua, PIC utama | dipakai oleh MoU/MoA/IA lewat `ID_Mitra` |
+| `MoU` | Nomor MoU, judul, masa berlaku, bidang tridarma, PIC, URL dokumen | satu MoU → banyak MoA, banyak IA |
+| `MoA` | Sama seperti MoU + **Pengguna** (unit/prodi) + **ID_MoU** (kosong = tanpa MoU) | ke MoU (opsional) |
+| `IA` | Sama seperti MoU + **Jenis_Induk** (MoA / MoU / kosong) + **Kelengkapan** | ke MoA, ke MoU, atau mandiri |
+
+Aturan yang dijaga otomatis oleh sistem:
+- **MoA yang didahului MoU** wajib memakai mitra yang sama dengan MoU-nya; formulir MoA kini menanyakan *"Didahului MoU dengan mitra yang sama?"* dan tidak bisa disimpan sebelum dijawab.
+- **Nomor dokumen tidak boleh ganda** (beda spasi atau huruf besar-kecil tetap dianggap sama).
+- **Ganti nama mitra** di Master Mitra → nama di semua MoU/MoA/IA ikut berubah.
+- Mitra yang masih dipakai dokumen, dan MoU/MoA yang masih punya turunan, **tidak bisa dihapus**.
+
+> ⚠️ **Data uji lama tidak dipindahkan.** Sheet `Kerja Sama` dan `IA` lama hanya diganti nama menjadi `Arsip v1 - …` (tidak dihapus). Data asli dimasukkan ulang lewat menu **Impor Data Excel**. Sheet `Pengguna`, `Promosi`, dan `Konfigurasi` tetap dipakai — akun dan kata sandi tidak berubah.
+
+### U1. Ganti kode backend
+Buka proyek Apps Script → `Kode.gs` → pilih semua (Ctrl+A) → tempel isi **`Kode.gs` versi 2** → Simpan (Ctrl+S).
+
+### U2. Jalankan `migrasiV2` — sekali saja
+Dropdown fungsi → **`migrasiV2`** → **Run**. Execution log harus berakhir dengan:
+```
+✅ Migrasi selesai. Sheet baru: Mitra, MoU, MoA, IA, Log_Email.
+```
+Menjalankannya dua kali aman — yang kedua hanya menulis "Database sudah memakai struktur versi 2".
+
+### U3. Deploy versi baru (URL tetap sama)
+**Deploy** → **Manage deployments** → ikon pensil ✏️ → **Version: New version** → **Deploy**. Jangan pilih *New deployment*.
+
+> Antara U2 dan U4, aplikasi lama di browser akan menampilkan galat. Itu wajar — selesaikan U4 sebelum pengguna lain membuka aplikasi.
+
+### U4. Perbarui frontend di GitHub
+1. Ekstrak `simpeka-ftsp.zip` versi 2.
+2. Salin **semua isinya** ke folder repository lama, timpa berkas yang ada. `js/config.js` di ZIP ini **sudah berisi `GAS_URL` Anda** (`…AKfycbxvVF…/exec`). Bila sebelumnya Anda mengisi `LOGO_URL`, buka `js/config.js` dan isi lagi baris itu (contoh `LOGO_URL: 'assets/logo-ftsp.png'`). Berkas logo di `assets/` tidak tersentuh.
+3. Di PowerShell pada folder repository:
+```powershell
+git add .
+git commit -m "SIMPEKA v2: Master Mitra, MoU, MoA, IA"
+git push
+```
+Tunggu 1–2 menit, buka situs, tekan **Ctrl+Shift+R**. Menu samping kini berisi **Master Mitra, MoU, MoA, IA, … Impor Data Excel**.
+
+### U5. Impor data dari Excel — urutannya wajib MoU → MoA → IA
+Masuk sebagai **Admin** → menu **Impor Data Excel**:
+1. Pilih berkas **MoU** (.xlsx). Jenisnya dikenali otomatis dari kolom `NOMOR MOU`/`NOMOR MOA`/`NOMOR IA`.
+2. Sistem langsung **memeriksa** tanpa menyimpan apa pun. Baca kolom *Hasil*: **Baru**, **Dilewati** (nomor sudah ada), **Gagal** (beserta alasannya), dan catatan kuning.
+3. Bila sudah benar → **Impor sekarang** → konfirmasi.
+4. Ulangi untuk berkas **MoA**, lalu **IA**. MoA mencari MoU induk dari kolom `NOMOR MOU`; tulisan seperti "Tanpa MoU" dibaca sebagai MoA mandiri. IA mencari induk dari kolom `NOMOR MoA` (boleh juga berisi nomor MoU).
+
+Mitra yang belum ada **dibuat otomatis** dari kolom MITRA, JENIS MITRA, KATEGORI MITRA, NEGARA, BENUA, dan centang INTERNASIONAL/NASIONAL/LOKAL. Nama mitra yang sama (tanpa peduli huruf besar-kecil) dipakai ulang.
+
+Pilihan **"Jika nomor sudah ada"**: *Lewati* (aman, default) atau *Perbarui datanya* (menimpa isi dokumen lama dengan isi Excel — dipakai bila Excel adalah versi yang lebih baru).
+
+### U6. Hasil uji berkas contoh Anda (perlu diperbaiki di Excel sebelum impor)
+Ketiga berkas yang Anda kirim sudah diuji dengan sistem ini:
+
+| Berkas | Hasil | Yang perlu diperhatikan |
+| --- | --- | --- |
+| Data_MoU_1.xlsx | 4 baru, 4 mitra baru | `Email PIC` Swinburne berisi `aaaa@gmail.com` (isian sementara?) |
+| Data_MoA_1.xlsx | 2 baru, **1 gagal** | Baris 4 dan 5 bernomor sama: `033/KS.00.02/USAKTI/ FTSP-DEK/X/2025` (dengan spasi) dan `…/USAKTI/FTSP-DEK/X/2025`. Bila keduanya memang dokumen berbeda, perbaiki salah satu nomornya. Baris 5 juga merujuk MoU `029/KS.00.08/USAKTI/R/V/2024`, sedangkan di berkas MoU yang ada `…/R/V/2021` (PT KAI) — dan mitranya UI, bukan KAI. Periksa nomor MoU yang benar. Email PIC UI `erjasama@eng.ui.ac.id` kemungkinan salah ketik (`kerjasama@`). |
+| DATA_IA_1.xlsx | 3 baru, 3 mitra baru | Kolom `NOMOR MoA` kosong semua → ketiganya tercatat sebagai IA **mandiri**. Bila sebenarnya turunan MoA/MoU, isi kolom itu sebelum impor, atau hubungkan lewat tombol Ubah setelahnya. |
+
+Isian `-` di kolom PIC dibaca sebagai kosong. Tautan `URL DOKUMEN` disimpan apa adanya (mengarah ke SIMKERMA, alamat `http://`).
+
+### U7. Bersihkan
+- Bila sebelumnya menjalankan `isiDataContoh` pada versi 2, jalankan **`hapusDataContoh`** sebelum impor data asli.
+- Sheet `Arsip v1 - …` boleh dihapus manual dari spreadsheet setelah Anda yakin tidak memerlukannya.
+- Periksa daftar di sheet `Konfigurasi` (lihat B2): `JENIS_MITRA`, `KATEGORI_MITRA`, `PENGGUNA_UNIT`.
 
 ---
 
@@ -66,15 +130,15 @@ Hasilnya di Google Drive:
 
 ```
 SIMPEKA/
-  Database SIMPEKA FTSP   (sheet: Kerja Sama, IA, Promosi, Pengguna, Log_Email, Konfigurasi)
-  Kerja Sama/  IA/  Promosi/  Laporan/
+  Database SIMPEKA FTSP   (sheet: Mitra, MoU, MoA, IA, Promosi, Pengguna, Log_Email, Konfigurasi)
+  Kerja Sama/ (subfolder MoU, MoA)  IA/  Promosi/  Laporan/
 ```
 
 Setup juga mendaftarkan email Anda sebagai **Admin pertama** dan memasang trigger harian `dailyCheck` (±06.00 WIB) untuk status dan email pengingat.
 
 ### A5. (Opsional) Data contoh
 
-Jalankan `isiDataContoh` untuk 5 kerja sama dengan status berbeda, 2 IA, dan 4 promosi. **Sebelum memasukkan data asli**, jalankan `hapusDataContoh`.
+Jalankan `isiDataContoh` untuk beberapa mitra, MoU, MoA, IA (dengan status berbeda) dan promosi. **Sebelum memasukkan data asli**, jalankan `hapusDataContoh`. Data asli paling cepat dimasukkan lewat menu **Impor Data Excel** (lihat U5).
 
 ### A6. Deploy sebagai Web App
 
@@ -107,10 +171,14 @@ Kunci lain bisa dibiarkan default dan diubah kapan saja tanpa menyentuh kode:
 
 | Kunci | Default | Fungsi |
 | --- | --- | --- |
-| `JENIS_MITRA` | Industri,Pendidikan,Pemerintah,Luar Negeri | Pilihan jenis mitra |
+| `JENIS_MITRA` | 13 kategori IKU (sama dengan SIMKERMA) + Lainnya | Pilihan jenis mitra; pisahkan dengan tanda `\|` |
+| `KATEGORI_MITRA` | Institusi Pendidikan\|Dunia Usaha\|Instansi Pemerintah\|Asosiasi dan Organisasi\|Lembaga Penelitian\|Lainnya | Pilihan kategori mitra |
+| `PENGGUNA_UNIT` | FTSP\|Teknik Sipil\|Arsitektur\|Magister Teknik Sipil\|Magister Arsitektur | Pilihan "Pengguna" pada MoA |
+| `FAKULTAS_UNIT_DEFAULT` | Fakultas Teknik Sipil dan Perencanaan | Isian awal kolom Fakultas/Unit |
+| `PENGINGAT_IA` | Ya | `Tidak` = email pengingat hanya untuk MoU & MoA |
 | `AMBANG_AKAN_BERAKHIR_BULAN` | 6 | Batas status Akan Berakhir |
 | `AMBANG_SEGERA_BERAKHIR_BULAN` | 3 | Batas status Segera Berakhir |
-| `PENGINGAT_BULAN` | 6,3,1 | Kapan email pengingat dikirim |
+| `PENGINGAT_BULAN` | 6,3,1 | Kapan pengingat dikirim (satu email ringkasan per hari, berisi semua dokumen yang jatuh tempo) |
 | `PENERIMA_PENGINGAT` | (kosong) | Kosong = semua Admin & WD IV aktif |
 | `MAKS_UKURAN_MB` | 10 | Batas ukuran unggah |
 | `NAMA_INSTITUSI`, `NAMA_FAKULTAS`, `ALAMAT_KOP` | — | Kop laporan PDF — **periksa alamatnya** |
@@ -196,8 +264,8 @@ Menu **Pengguna** → **Tambah pengguna** → email, nama, peran. Biarkan **"Kir
 | Peran | Hak |
 | --- | --- |
 | Admin | Lihat, tambah, ubah, hapus semua data; kelola pengguna; reset kata sandi |
-| Wakil Dekan IV | Lihat, tambah, ubah semua data; cetak & unggah laporan; tanpa hapus |
-| Tim Promosi | Hanya lihat dashboard, daftar, dan kalender promosi |
+| Wakil Dekan IV | Lihat, tambah, ubah semua data; cetak & unggah laporan; tanpa hapus dan tanpa impor Excel |
+| Tim Promosi | Hanya lihat dashboard, daftar, dan kalender promosi (tidak bisa melihat Mitra/MoU/MoA/IA) |
 
 ### D3. Uji sesuai PRD 8.2
 
@@ -206,13 +274,18 @@ Menu **Pengguna** → **Tambah pengguna** → email, nama, peran. Biarkan **"Kir
 | 1 | Login akun Trisakti **dan** akun Gmail | Masuk sesuai peran |
 | 2 | Login dengan email tak terdaftar / kata sandi salah | "Email atau kata sandi salah" |
 | 2b | Salah kata sandi 5 kali | Akun terkunci 15 menit |
-| 3 | Admin tambah/ubah/hapus kerja sama | Berhasil, kolom Dibuat/Diubah tercatat |
-| 4 | WD IV membuka kerja sama | Tidak ada tombol hapus |
-| 5 | Tim Promosi membuka `…/simpeka/#/kerjasama` langsung | Dialihkan ke Dashboard |
+| 3 | Admin tambah/ubah/hapus mitra, MoU, MoA, IA | Berhasil, kolom Dibuat/Diubah tercatat |
+| 3b | Tambah MoA → jawab "Ya, ada MoU" → pilih MoU | Mitra terkunci mengikuti MoU; MoA muncul di detail MoU dan di detail Mitra |
+| 3c | Tambah MoA → "Tanpa MoU" → "Tambah mitra baru" | Mitra baru otomatis masuk Master Mitra |
+| 3d | Ganti nama mitra di Master Mitra | Nama di daftar MoU/MoA/IA ikut berubah |
+| 4 | WD IV membuka MoU/MoA | Tidak ada tombol hapus; menu Impor tidak ada |
+| 5 | Tim Promosi membuka `…/simpeka/#/mou` langsung | Dialihkan ke Dashboard |
 | 6 | `isiDataContoh` | Empat status dengan warna berbeda |
 | 7 | Jalankan `dailyCheck` dua kali di editor | Email hanya terkirim sekali (cek `Log_Email`) |
 | 8 | Tambah promosi | Muncul di Kalender pada tanggal rencana |
-| 9 | Tambah IA terhubung & IA mandiri | Kolom IA pada kerja sama berubah |
+| 9 | Tambah IA ke MoA, IA ke MoU, IA mandiri | Kolom IA pada MoA/MoU bertambah |
+| 9b | Impor Excel MoU → MoA → IA | Hasil pemeriksaan sesuai U6; data muncul di menu masing-masing |
+| 9c | Laporan → **Unduh Excel** | Berkas Excel dengan sheet MoU, MoA, IA, Mitra |
 | 10 | Unggah PDF/JPG; lalu berkas > 10 MB | Berkas masuk Drive; berkas besar ditolak |
 | 11 | Cetak keempat laporan | PDF terunduh dan muncul di Arsip |
 | 12 | Buka di HP, alihkan mode gelap | Tampilan rapi, menu bawah muncul |
@@ -252,6 +325,12 @@ Jangan memilih *New deployment* — itu menghasilkan URL `/exec` baru yang belum
 | Semua kata sandi tiba-tiba tidak berlaku | Script Properties dihapus (kunci `PEPPER` hilang) | Jalankan `resetSandiAdmin`, lalu reset pengguna lain dari aplikasi |
 | Situs 404 | `index.html` tidak di akar repository | Lihat C2; push ulang dari folder yang benar |
 | Halaman tampil tanpa gaya | Folder `css/` dan `js/` tidak ikut | Selalu push lewat git, jangan "Upload files" di web GitHub |
+| "Database belum memakai struktur versi 2" | `Kode.gs` v2 sudah dipasang tetapi `migrasiV2` belum dijalankan | Jalankan U2, lalu U3 |
+| Menu masih "Kerja Sama (MoU/MoA)" | Frontend lama masih tersimpan di cache | Ctrl+Shift+R; pastikan U4 sudah di-push |
+| Impor: "Baris judul kolom tidak ditemukan" | Berkas bukan format SIMKERMA, atau judul kolom diubah | Pastikan ada kolom `NOMOR MOU`/`NOMOR MOA`/`NOMOR IA` di 10 baris teratas |
+| Impor MoA/IA: "induk belum ada" | MoU/MoA induknya belum diimpor, atau nomornya berbeda | Impor MoU dulu; samakan nomor di Excel |
+| Impor: tanggal "tidak valid" | Sel tanggal berisi teks yang tidak dikenali | Gunakan format `21 Agustus 2024`, `2024-08-21`, atau `21/08/2024` |
+| "Mitra ini masih dipakai … tidak dapat dihapus" | Mitra punya dokumen | Hapus/pindahkan dokumennya dulu, atau biarkan |
 
 ---
 
@@ -266,4 +345,5 @@ Jangan memilih *New deployment* — itu menghasilkan URL `/exec` baru yang belum
 3. **Unggah berkas** dikirim dalam satu permintaan (pemecahan per potongan di PRD diperlukan untuk `google.script.run`). Bila kelak berkas mendekati 10 MB gagal terunggah, turunkan `MAKS_UKURAN_MB`.
 4. **Status masa berlaku** dihitung ulang setiap kali data dibuka; kolom `Status_Masa` di sheet diperbarui trigger harian.
 5. **Pengingat yang terlewat:** kerja sama yang dimasukkan saat sisa masanya sudah 2 bulan hanya mendapat pengingat paling mendesak (3 bulan); yang lebih longgar dicatat "dilewati". Jika tanggal Akhir diperpanjang, pengingat untuk tanggal baru dikirim lagi.
-6. **Kerja sama yang masih memiliki IA tidak bisa dihapus** sebelum IA-nya dihapus atau dilepas.
+6. **MoU/MoA yang masih memiliki turunan (MoA/IA) tidak bisa dihapus**, dan mitranya tidak bisa diganti, sebelum turunannya dihapus atau dipindah.
+7. **Impor Excel hanya untuk Admin** dan selalu didahului pemeriksaan (tanpa menyimpan). Baris yang gagal tidak pernah ikut tersimpan.

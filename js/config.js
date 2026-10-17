@@ -11,8 +11,9 @@
  *             LOGO_URL: 'assets/logo-ftsp.png'
  *             Biarkan kosong untuk memakai ikon bawaan.
  *
- *  Google Client ID TIDAK diisi di sini — diisi di sheet "Konfigurasi"
- *  (kunci GOOGLE_CLIENT_ID) agar hanya ada satu sumber kebenaran.
+ *  PERHATIKAN: setiap nilai diapit tanda kutip tunggal ' di awal DAN akhir,
+ *  lalu diakhiri koma. Contoh yang benar:
+ *    GAS_URL: 'https://script.google.com/macros/s/AKfy.../exec',
  */
 window.SIMPEKA_CONFIG = {
   GAS_URL: 'https://script.google.com/macros/s/AKfycbxvVF-viQNXiszfgI6qy1llZUgQVUcl8uBePdgVwzleyjDbWF_mZhleVa3dJHsqyNyg/exec',
