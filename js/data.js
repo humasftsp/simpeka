@@ -4,11 +4,12 @@
  */
 const F_DOK = () => ({ q: '', status: '', kategori: '', lingkup: '', tahun: '', bidang: '', relasi: '', sort: 'Akhir', dir: 1, page: 1 });
 const STATE = {
-  user: null, perms: {}, options: {}, mitra: [], mou: [], moa: [], ia: [], promosi: [], pengguna: [], loadedAt: null,
+  user: null, perms: {}, options: {}, mitra: [], mou: [], moa: [], ia: [], promosi: [], petugas: [], pengguna: [], loadedAt: null,
   f: {
     mou: F_DOK(), moa: F_DOK(), ia: F_DOK(),
     mitra: { q: '', kategori: '', lingkup: '', jenis: '', sort: 'Nama_Mitra', dir: 1, page: 1 },
-    promosi: { q: '', status: '', bulan: '', sort: '_tgl', dir: -1, page: 1 },
+    promosi: { q: '', status: '', bulan: '', jenis: '', petugas: '', sort: '_tgl', dir: -1, page: 1 },
+    petugas: { q: '', kategori: '', semua: false },
     kal: { mode: '', y: null, m: null, sel: null, dok: '', kategori: '', status: '' },
     users: { q: '' }
   }
@@ -27,7 +28,8 @@ const DATA = (() => {
   const KEYS = {
     mou: DOCS.mou, moa: DOCS.moa, ia: DOCS.ia,
     mitra: { id: 'ID_Mitra', label: 'mitra' },
-    promosi: { id: 'ID_Promosi', link: 'Link_Bukti', label: 'kegiatan promosi' }
+    promosi: { id: 'ID_Promosi', link: 'Link_Bukti', label: 'kegiatan promosi' },
+    petugas: { id: 'ID_Petugas', label: 'petugas' }
   };
   const TRIDARMA = [['Dikjar', 'Dikjar'], ['Penelitian', 'Penelitian'], ['PkM', 'PkM'], ['Non_Tridarma', 'Non Tridarma']];
   const PERAN_LABEL = { Admin: 'Admin Sekretariat', WD_IV: 'Wakil Dekan IV', Tim_Promosi: 'Tim Promosi' };
@@ -64,7 +66,14 @@ const DATA = (() => {
     });
     (STATE.moa || []).forEach((r) => { r._iaTotal = r._anakIa.length; });
     (STATE.mou || []).forEach((r) => { r._iaTotal = r._anakIa.length + r._anakMoa.reduce((n, a) => n + a._anakIa.length, 0); });
-    (STATE.promosi || []).forEach((r) => { r._tgl = r.Tanggal_Realisasi || r.Tanggal_Rencana; });
+    const ptg = {};
+    (STATE.petugas || []).forEach((p) => { ptg[p.ID_Petugas] = p; p._tugas = 0; p._selesai = 0; });
+    (STATE.promosi || []).forEach((r) => {
+      r._tgl = r.Tanggal_Realisasi || r.Tanggal_Rencana;
+      r._ptg = String(r.ID_Petugas || '').split(',').map((x) => x.trim()).filter(Boolean).map((i) => ptg[i]).filter(Boolean);
+      r._ptg.forEach((p) => { if (r.Status !== 'Batal') p._tugas++; if (r.Status === 'Terlaksana') p._selesai++; });
+      r._jenis = r.Jenis_Kegiatan ? (r.Jenis_Kegiatan === 'Lainnya' && r.Keterangan_Jenis ? r.Keterangan_Jenis : r.Jenis_Kegiatan) : '';
+    });
   }
 
   const list = (jenis) => STATE[jenis] || [];
@@ -89,6 +98,7 @@ const DATA = (() => {
     try {
       const rec = await API.call(jenis + '.save', data);
       if (rec._mitra) { upsert('mitra', rec._mitra); delete rec._mitra; }
+      if (rec._petugasBaru) { rec._petugasBaru.forEach((p) => upsert('petugas', p)); delete rec._petugasBaru; }
       upsert(jenis, rec);
       derive();
       if (file) {
@@ -104,7 +114,7 @@ const DATA = (() => {
           return rec;
         }
       }
-      UI.toast((baru ? 'Data baru disimpan' : 'Perubahan disimpan') + ' • ' + (rec[k.nomor] || rec.Nama_Mitra || rec[k.id]));
+      UI.toast((baru ? 'Data baru disimpan' : 'Perubahan disimpan') + ' • ' + (rec[k.nomor] || rec.Nama_Mitra || rec.Nama_Sekolah || rec.Nama_Petugas || rec[k.id]));
       return rec;
     } finally {
       UI.loading(false);
@@ -203,6 +213,10 @@ const DATA = (() => {
 
   const docChip = (k) => `<span class="chip chip-doc doc-${k}">${DOCS[k].label}</span>`;
   const lingkupChip = (l) => l ? `<span class="chip ${l === 'Internasional' ? 'chip-blue' : l === 'Lokal' ? 'chip-violet' : ''}">${l === 'Internasional' ? icon('globe', 12) : ''}${esc(l)}</span>` : '';
+  const KAT_CLS = { Dosen: 'chip-blue', Tendik: 'chip-green', Mahasiswa: 'chip-violet' };
+  const katChip = (k) => k ? `<span class="chip ${KAT_CLS[k] || ''}">${esc(k)}</span>` : '';
+  const petugasChips = (r) => (r._ptg || []).map((p) => `<span class="chip ptg-chip"><b>${esc(p.Nama_Petugas)}</b><i class="kdot k-${esc(p.Kategori)}" title="${esc(p.Kategori)}"></i><small>${esc(p.Kategori)}</small></span>`).join('');
+  const jenisChip = (r) => r.Jenis_Kegiatan ? `<span class="chip chip-navy-soft">${esc(r.Jenis_Kegiatan === 'Lainnya' ? (r.Keterangan_Jenis || 'Lainnya') : r.Jenis_Kegiatan)}</span>` : '<span class="chip chip-warn">Jenis belum diisi</span>';
   const bidangText = (r) => TRIDARMA.filter(([k]) => r[k]).map(([, l]) => l).join(', ');
   const bidangChips = (r) => TRIDARMA.filter(([k]) => r[k]).map(([, l]) => `<span class="chip">${l}</span>`).join('');
   /** Nomor surat boleh terpotong baris hanya setelah '/' (bukan di tengah angka). */
@@ -212,6 +226,6 @@ const DATA = (() => {
 
   return {
     DOCS, DOC_KEYS, KEYS, TRIDARMA, PERAN_LABEL, PALET, can, derive, byId, allDocs, upsert, remove, save, del, berkas,
-    head, select, selectNamed, sortTh, sortRows, paginate, pager, docChip, lingkupChip, bidangText, bidangChips, matchQ, nomorHtml
+    head, select, selectNamed, sortTh, sortRows, paginate, pager, docChip, lingkupChip, bidangText, bidangChips, matchQ, nomorHtml, katChip, petugasChips, jenisChip
   };
 })();

@@ -26,7 +26,7 @@ const DOCSUI = (() => {
         const cur = sel.value;
         sel.innerHTML = all.filter((o, i) => i === 0 || !s || o.t.toLowerCase().indexOf(s) >= 0)
           .map((o) => `<option value="${esc(o.v)}">${esc(o.t)}</option>`).join('');
-        if (all.some((o) => o.v === cur) && Array.from(sel.options).some((o) => o.value === cur)) sel.value = cur;
+        if (cur && Array.from(sel.options).some((o) => o.value === cur)) sel.value = cur; // pilihan lama masih cocok
         else if (s && sel.options.length > 1) { sel.selectedIndex = 1; sel.dispatchEvent(new Event('change')); }
       });
     });

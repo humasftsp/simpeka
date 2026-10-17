@@ -47,7 +47,7 @@ const PAGES = (() => {
       const d = r.Tanggal_Rencana;
       return `<li><button type="button" data-pr="${esc(r.ID_Promosi)}">
         <span class="date-tile"><b>${+d.slice(8, 10)}</b><small>${UI.BLN[+d.slice(5, 7) - 1]}</small></span>
-        <span class="ag-text"><span class="t-strong">${esc(r.Nama_Sekolah)}</span><span class="t-sub">${icon('map-pin', 12)} ${esc(r.Kota_Alamat || '-')}${r.PIC ? ' • ' + esc(r.PIC) : ''}</span></span>
+        <span class="ag-text"><span class="t-strong">${esc(r.Nama_Sekolah)}</span><span class="t-sub">${icon('map-pin', 12)} ${esc(r.Kota_Alamat || '-')}${r.Jenis_Kegiatan ? ' • ' + esc(r._jenis) : ''}${r._ptg && r._ptg.length ? ' • ' + r._ptg.length + ' petugas' : ''}</span></span>
         <span class="ag-when">${UI.sisaHari(d) === 0 ? 'Hari ini' : UI.sisaHari(d) + ' hari lagi'}</span></button></li>`;
     }).join('')}</ul>`;
   }
@@ -401,38 +401,65 @@ const PAGES = (() => {
     title: 'Promosi Sekolah',
     render(el) {
       const f = STATE.f.promosi, rows = STATE.promosi;
-      const bulanOpts = [...new Set(rows.map((r) => (r._tgl || '').slice(0, 7)).filter(Boolean))].sort().reverse()
-        .map((b) => ({ value: b, label: UI.BULAN[+b.slice(5, 7) - 1] + ' ' + b.slice(0, 4) }));
+      const tab = f.tab === 'petugas' ? 'petugas' : 'kegiatan';
+      const canW = DATA.can('promosi', 'w');
       el.innerHTML = `
         ${DATA.head({
           eyebrow: icon('megaphone', 14) + ' Promosi & sosialisasi PMB',
           title: 'Promosi Sekolah',
-          lead: 'Jadwal kunjungan promosi ke sekolah beserta bukti kegiatannya. Setiap jadwal otomatis tampil di kalender promosi.',
-          actions: (DATA.can('promosi', 'w') ? `<button type="button" class="btn btn-primary" id="pr-add">${icon('plus', 18)} Jadwalkan kunjungan</button>` : '') +
+          lead: 'Kegiatan promosi ke sekolah (presentasi, pameran/stand, dan lainnya) beserta petugas dan bukti kegiatannya. Setiap jadwal otomatis tampil di kalender.',
+          actions: (canW ? (tab === 'petugas'
+            ? `<button type="button" class="btn btn-primary" id="pr-add">${icon('plus', 18)} Tambah petugas</button>`
+            : `<button type="button" class="btn btn-primary" id="pr-add">${icon('plus', 18)} Jadwalkan kegiatan</button>`) : '') +
             `<button type="button" class="btn btn-outline" data-go="kalender">${icon('calendar-days', 18)} Kalender</button>`
         })}
-        <div class="grid g-4">
-          ${kpiMini('Total kegiatan', rows.length, 'school', 'var(--primary)', 'Seluruh promosi tercatat')}
-          ${ST_PR.map((s) => kpiMini(s, count(rows, (r) => r.Status === s), s === 'Rencana' ? 'clock' : s === 'Batal' ? 'circle-x' : 'circle-check', UI.color(s), pct(count(rows, (r) => r.Status === s), rows.length) + '% dari total')).join('')}
+        <div class="seg seg-tabs" id="pr-tab" role="tablist">
+          <button type="button" role="tab" data-tab="kegiatan" class="${tab === 'kegiatan' ? 'on' : ''}" aria-selected="${tab === 'kegiatan'}">${icon('megaphone', 16)} Kegiatan <span class="cnt">${rows.length}</span></button>
+          <button type="button" role="tab" data-tab="petugas" class="${tab === 'petugas' ? 'on' : ''}" aria-selected="${tab === 'petugas'}">${icon('users', 16)} Petugas <span class="cnt">${STATE.petugas.filter((p) => p.Status !== 'Nonaktif').length}</span></button>
         </div>
+        <div id="pr-body"></div>`;
+      UI.$('#pr-tab', el).onclick = (e) => { const b = e.target.closest('[data-tab]'); if (b && b.dataset.tab !== tab) { f.tab = b.dataset.tab; this.render(el); } };
+      UI.$('[data-go]', el).onclick = () => APP.go('kalender', { mode: 'promosi' });
+      UI.$('#pr-add', el) && (UI.$('#pr-add', el).onclick = () => (tab === 'petugas' ? FORMS.petugasForm() : FORMS.promosiForm()));
+      if (tab === 'petugas') this.petugas(UI.$('#pr-body', el)); else this.kegiatan(UI.$('#pr-body', el), el);
+    },
+
+    kegiatan(body, el) {
+      const f = STATE.f.promosi, rows = STATE.promosi, o = STATE.options;
+      const bulanOpts = [...new Set(rows.map((r) => (r._tgl || '').slice(0, 7)).filter(Boolean))].sort().reverse()
+        .map((b) => ({ value: b, label: UI.BULAN[+b.slice(5, 7) - 1] + ' ' + b.slice(0, 4) }));
+      const ptgOpts = STATE.petugas.slice().sort((a, b) => a.Nama_Petugas.localeCompare(b.Nama_Petugas, 'id'))
+        .map((p) => ({ value: p.ID_Petugas, label: p.Nama_Petugas + ' (' + p.Kategori + ')' }));
+      const jenisOpts = o.jenisKegiatan.map((j) => ({ value: j, label: j })).concat([{ value: '_kosong', label: 'Belum diisi' }]);
+      const kurang = count(rows, (r) => r.Status === 'Terlaksana' && r._ptg.length < o.petugasMin);
+      body.innerHTML = `
+        <div class="grid g-4">
+          ${kpiMini('Total kegiatan', rows.length, 'school', 'var(--primary)', o.jenisKegiatan.map((j) => count(rows, (r) => r.Jenis_Kegiatan === j) + ' ' + j.replace(' (Stand)', '')).join(' • '))}
+          ${ST_PR.map((st) => kpiMini(st, count(rows, (r) => r.Status === st), st === 'Rencana' ? 'clock' : st === 'Batal' ? 'circle-x' : 'circle-check', UI.color(st), pct(count(rows, (r) => r.Status === st), rows.length) + '% dari total')).join('')}
+        </div>
+        ${kurang ? `<div class="note warn">${icon('triangle-alert', 16)}<span>${kurang} kegiatan Terlaksana belum mencatat ${o.petugasMin}–${o.petugasMax} petugas.</span><button type="button" class="link-btn" id="pr-kurang">Tampilkan</button></div>` : ''}
         <div class="card filter-card"><div class="filters">
-          <div class="seg" id="pr-seg">${[''].concat(ST_PR).map((s) => `<button type="button" data-st="${s}" class="${f.status === s ? 'on' : ''}">${s ? `<i class="sdot" style="background:${UI.color(s)}"></i>` : ''}${s || 'Semua'} <span class="cnt">${s ? count(rows, (r) => r.Status === s) : rows.length}</span></button>`).join('')}</div>
-          <label class="search">${icon('search', 18)}<input id="pr-q" type="search" placeholder="Cari sekolah, kota, atau PIC…" value="${esc(f.q)}" aria-label="Cari promosi"></label>
+          <div class="seg" id="pr-seg">${[''].concat(ST_PR).map((st) => `<button type="button" data-st="${st}" class="${f.status === st ? 'on' : ''}">${st ? `<i class="sdot" style="background:${UI.color(st)}"></i>` : ''}${st || 'Semua'} <span class="cnt">${st ? count(rows, (r) => r.Status === st) : rows.length}</span></button>`).join('')}</div>
+          <label class="search">${icon('search', 18)}<input id="pr-q" type="search" placeholder="Cari sekolah, kota, petugas, atau catatan…" value="${esc(f.q)}" aria-label="Cari promosi"></label>
+          ${DATA.select('pr-jenis', 'Semua jenis kegiatan', jenisOpts, f.jenis, 'Jenis kegiatan')}
+          ${DATA.select('pr-ptg', 'Semua petugas', ptgOpts, f.petugas, 'Petugas')}
           ${DATA.select('pr-bln', 'Semua bulan', bulanOpts, f.bulan, 'Bulan')}
         </div></div>
         <section class="card list-card" id="pr-res"></section>`;
-      const res = UI.$('#pr-res', el);
+      const res = UI.$('#pr-res', body);
       const go = () => this.results(res);
-      UI.$('#pr-add', el) && (UI.$('#pr-add', el).onclick = () => FORMS.promosiForm());
-      UI.$('[data-go]', el).onclick = () => APP.go('kalender', { mode: 'promosi' });
-      UI.$('#pr-seg', el).onclick = (e) => {
+      UI.$('#pr-seg', body).onclick = (e) => {
         const b = e.target.closest('[data-st]'); if (!b) return;
         f.status = b.dataset.st; f.page = 1;
-        UI.$$('#pr-seg button', el).forEach((x) => x.classList.toggle('on', x === b));
+        UI.$$('#pr-seg button', body).forEach((x) => x.classList.toggle('on', x === b));
         go();
       };
-      UI.$('#pr-q', el).oninput = UI.debounce((e) => { f.q = e.target.value.trim(); f.page = 1; go(); }, 150);
-      UI.$('#pr-bln', el).onchange = (e) => { f.bulan = e.target.value; f.page = 1; go(); };
+      const kb = UI.$('#pr-kurang', body);
+      if (kb) kb.onclick = () => { f.kurang = !f.kurang; kb.textContent = f.kurang ? 'Tampilkan semua' : 'Tampilkan'; f.page = 1; go(); };
+      UI.$('#pr-q', body).oninput = UI.debounce((e) => { f.q = e.target.value.trim(); f.page = 1; go(); }, 150);
+      UI.$('#pr-bln', body).onchange = (e) => { f.bulan = e.target.value; f.page = 1; go(); };
+      UI.$('#pr-jenis', body).onchange = (e) => { f.jenis = e.target.value; f.page = 1; go(); };
+      UI.$('#pr-ptg', body).onchange = (e) => { f.petugas = e.target.value; f.page = 1; go(); };
       bindPager(res, f, go);
       res.addEventListener('click', (e) => {
         if (e.target.closest('[data-page],[data-sort]')) return;
@@ -449,14 +476,18 @@ const PAGES = (() => {
       });
       go();
     },
+
     results(res) {
-      const f = STATE.f.promosi;
+      const f = STATE.f.promosi, o = STATE.options;
       let rows = STATE.promosi.filter((r) => (!f.status || r.Status === f.status) &&
         (!f.bulan || (r._tgl || '').slice(0, 7) === f.bulan) &&
-        (!f.q || DATA.matchQ(f.q, [r.ID_Promosi, r.Nama_Sekolah, r.Kota_Alamat, r.PIC])));
+        (!f.jenis || (f.jenis === '_kosong' ? !r.Jenis_Kegiatan : r.Jenis_Kegiatan === f.jenis)) &&
+        (!f.petugas || r._ptg.some((p) => p.ID_Petugas === f.petugas)) &&
+        (!f.kurang || (r.Status === 'Terlaksana' && r._ptg.length < o.petugasMin)) &&
+        (!f.q || DATA.matchQ(f.q, [r.ID_Promosi, r.Nama_Sekolah, r.Kota_Alamat, r.Petugas, r.Catatan, r.Keterangan_Jenis])));
       rows = DATA.sortRows(rows, f);
       if (!rows.length) {
-        res.innerHTML = STATE.promosi.length ? UI.empty('Tidak ada yang cocok', 'Coba ubah kata kunci atau filter.') : UI.empty('Belum ada jadwal promosi', DATA.can('promosi', 'w') ? 'Jadwalkan kunjungan sekolah pertama.' : 'Jadwal akan tampil di sini setelah diinput Admin atau WD IV.');
+        res.innerHTML = STATE.promosi.length ? UI.empty('Tidak ada yang cocok', 'Coba ubah kata kunci atau filter.') : UI.empty('Belum ada kegiatan promosi', DATA.can('promosi', 'w') ? 'Jadwalkan kegiatan pertama, atau impor data lama lewat menu Impor Data Excel.' : 'Kegiatan akan tampil di sini setelah diinput Admin atau WD IV.');
         return;
       }
       const p = DATA.paginate(rows, f);
@@ -467,21 +498,78 @@ const PAGES = (() => {
       const tglCell = (r) => r.Tanggal_Realisasi && r.Tanggal_Realisasi !== r.Tanggal_Rencana
         ? `<div>${UI.tgl(r.Tanggal_Realisasi)}</div><div class="t-sub">Rencana ${UI.tgl(r.Tanggal_Rencana)}</div>`
         : `<div>${UI.tgl(r.Tanggal_Rencana)}</div><div class="t-sub">${r.Status === 'Rencana' ? (UI.sisaHari(r.Tanggal_Rencana) >= 0 ? (UI.sisaHari(r.Tanggal_Rencana) === 0 ? 'Hari ini' : UI.sisaHari(r.Tanggal_Rencana) + ' hari lagi') : 'Lewat jadwal — perbarui status') : r.Status === 'Terlaksana' ? 'Sesuai rencana' : ''}</div>`;
+      const ptgCell = (r) => {
+        const kurang = r.Status === 'Terlaksana' && r._ptg.length < o.petugasMin;
+        return (r._ptg.length ? `<ul class="ptg-mini">${r._ptg.map((x) => `<li><i class="kdot k-${esc(x.Kategori)}" title="${esc(x.Kategori)}"></i>${esc(x.Nama_Petugas)}</li>`).join('')}</ul>` : '<span class="muted sm">Belum ada</span>') +
+          (kurang ? `<div class="t-sub warn-t">${icon('triangle-alert', 12)} Kurang dari ${o.petugasMin}</div>` : '');
+      };
       res.innerHTML = `
-        <div class="list-head"><h2 class="card-title">Daftar kegiatan</h2><span class="chip">${rows.length} hasil</span></div>
+        <div class="list-head"><h2 class="card-title">Daftar kegiatan</h2><span class="chip">${rows.length} hasil</span>
+          <span class="kat-legend">${o.kategoriPetugas.map((k) => `<span><i class="kdot k-${k}"></i>${k}</span>`).join('')}</span></div>
         <div class="tbl-wrap"><table class="tbl">
-          <thead><tr>${DATA.sortTh('ID', 'ID_Promosi', f)}${DATA.sortTh('Sekolah & lokasi', 'Nama_Sekolah', f)}${DATA.sortTh('PIC', 'PIC', f)}${DATA.sortTh('Tanggal', '_tgl', f)}<th>Status</th><th>Bukti</th>${DATA.can('promosi', 'w') ? '<th class="ta-r">Aksi</th>' : ''}</tr></thead>
+          <thead><tr>${DATA.sortTh('Sekolah & lokasi', 'Nama_Sekolah', f)}${DATA.sortTh('Jenis', 'Jenis_Kegiatan', f)}<th>Petugas</th>${DATA.sortTh('Tanggal', '_tgl', f)}<th>Status</th><th>Bukti</th>${DATA.can('promosi', 'w') ? '<th class="ta-r">Aksi</th>' : ''}</tr></thead>
           <tbody>${p.rows.map((r) => `<tr data-id="${esc(r.ID_Promosi)}" class="row-click ${r.Status === 'Batal' ? 'is-batal' : ''}" tabindex="0">
-            <td class="mono">${esc(r.ID_Promosi)}</td>
-            <td class="w-wide"><div class="t-strong">${esc(r.Nama_Sekolah)}</div><div class="t-sub">${icon('map-pin', 12)} ${esc(r.Kota_Alamat || '-')}</div></td>
-            <td>${esc(r.PIC || '-')}</td><td class="nowrap">${tglCell(r)}</td><td>${UI.badge(r.Status)}</td><td>${bukti(r)}</td>${DATA.can('promosi', 'w') ? `<td class="ta-r">${acts(r)}</td>` : ''}</tr>`).join('')}</tbody>
+            <td class="w-wide"><div class="t-strong">${esc(r.Nama_Sekolah)}</div><div class="t-sub">${icon('map-pin', 12)} ${esc(r.Kota_Alamat || '-')} · <span class="mono">${esc(r.ID_Promosi)}</span></div>${r.Catatan ? `<div class="t-sub clamp1">${icon('info', 12)} ${esc(r.Catatan)}</div>` : ''}</td>
+            <td>${DATA.jenisChip(r)}</td><td class="w-mid">${ptgCell(r)}</td><td class="nowrap">${tglCell(r)}</td><td>${UI.badge(r.Status)}</td><td>${bukti(r)}</td>${DATA.can('promosi', 'w') ? `<td class="ta-r">${acts(r)}</td>` : ''}</tr>`).join('')}</tbody>
         </table></div>
         <ul class="mlist">${p.rows.map((r) => `<li class="mcard" data-id="${esc(r.ID_Promosi)}" style="--accent:${UI.color(r.Status)}">
           <div class="mcard-top"><span class="avatar sq" style="--av:${UI.color(r.Status)}">${icon(r.Status === 'Terlaksana' ? 'circle-check' : r.Status === 'Batal' ? 'circle-x' : 'clock', 20)}</span>
             <div class="mcard-title"><span class="t-strong ${r.Status === 'Batal' ? 'strike' : ''}">${esc(r.Nama_Sekolah)}</span><span class="t-sub">${esc(r.Kota_Alamat || '-')}</span></div>${UI.badge(r.Status)}</div>
-          <div class="chips"><span class="chip">${icon('user-round', 12)} ${esc(r.PIC || '-')}</span><span class="chip">${icon('calendar', 12)} ${UI.tgl(r._tgl)}</span></div>
+          <div class="chips">${DATA.jenisChip(r)}<span class="chip">${icon('calendar', 12)} ${UI.tgl(r._tgl)}</span><span class="chip ${r.Status === 'Terlaksana' && r._ptg.length < o.petugasMin ? 'chip-warn' : ''}">${icon('users', 12)} ${r._ptg.length} petugas</span></div>
+          ${r._ptg.length ? `<ul class="ptg-mini">${r._ptg.map((x) => `<li><i class="kdot k-${esc(x.Kategori)}"></i>${esc(x.Nama_Petugas)}</li>`).join('')}</ul>` : ''}
           <div class="mcard-foot">${bukti(r)}${acts(r)}</div></li>`).join('')}</ul>
         ${DATA.pager(rows.length, f, p.pages, p.start)}`;
+    },
+
+    petugas(body) {
+      const f = STATE.f.petugas, o = STATE.options;
+      const all = STATE.petugas;
+      const aktif = all.filter((p) => p.Status !== 'Nonaktif');
+      const draw = () => {
+        const rows = all.filter((p) => (f.semua || p.Status !== 'Nonaktif') && (!f.kategori || p.Kategori === f.kategori) &&
+          (!f.q || DATA.matchQ(f.q, [p.Nama_Petugas, p.Keterangan, p.ID_Petugas])))
+          .sort((a, b) => b._tugas - a._tugas || a.Nama_Petugas.localeCompare(b.Nama_Petugas, 'id'));
+        const res = UI.$('#pt-res', body);
+        if (!rows.length) {
+          res.innerHTML = all.length ? UI.empty('Tidak ada yang cocok', 'Coba ubah kata kunci atau filter.')
+            : UI.empty('Belum ada petugas', DATA.can('promosi', 'w') ? 'Tambah petugas di sini, atau langsung dari formulir kegiatan promosi.' : 'Daftar petugas akan tampil setelah diinput Admin atau WD IV.');
+          return;
+        }
+        res.innerHTML = `
+          <div class="list-head"><h2 class="card-title">Master petugas</h2><span class="chip">${rows.length} orang</span></div>
+          <div class="tbl-wrap"><table class="tbl">
+            <thead><tr><th>Nama</th><th>Kategori</th><th>Keterangan</th><th class="ta-c">Tugas</th><th class="ta-c">Terlaksana</th><th>Status</th>${DATA.can('promosi', 'w') ? '<th class="ta-r">Aksi</th>' : ''}</tr></thead>
+            <tbody>${rows.map((p) => `<tr data-id="${esc(p.ID_Petugas)}" class="${DATA.can('promosi', 'w') ? 'row-click' : ''} ${p.Status === 'Nonaktif' ? 'is-batal' : ''}" tabindex="0">
+              <td><div class="t-strong">${esc(p.Nama_Petugas)}</div><div class="t-sub mono">${esc(p.ID_Petugas)}</div></td><td>${DATA.katChip(p.Kategori)}</td>
+              <td class="t-sub">${esc(p.Keterangan || '-')}</td><td class="ta-c"><b>${p._tugas}</b></td><td class="ta-c">${p._selesai}</td>
+              <td>${p.Status === 'Nonaktif' ? '<span class="badge pr-batal">Nonaktif</span>' : '<span class="badge st-aktif">Aktif</span>'}</td>
+              ${DATA.can('promosi', 'w') ? `<td class="ta-r"><button type="button" class="icon-btn sm" data-act="edit" title="Ubah" aria-label="Ubah">${icon('pencil', 17)}</button></td>` : ''}</tr>`).join('')}</tbody>
+          </table></div>
+          <ul class="mlist">${rows.map((p) => `<li class="mcard" data-id="${esc(p.ID_Petugas)}">
+            <div class="mcard-top"><span class="avatar">${esc(UI.initials(p.Nama_Petugas))}</span><div class="mcard-title"><span class="t-strong">${esc(p.Nama_Petugas)}</span><span class="t-sub">${esc(p.Keterangan || p.ID_Petugas)}</span></div>${DATA.katChip(p.Kategori)}</div>
+            <div class="chips"><span class="chip">${p._tugas} tugas</span><span class="chip chip-green">${p._selesai} terlaksana</span>${p.Status === 'Nonaktif' ? '<span class="chip">Nonaktif</span>' : ''}</div></li>`).join('')}</ul>`;
+      };
+      body.innerHTML = `
+        <div class="grid g-4">
+          ${kpiMini('Petugas aktif', aktif.length, 'users', 'var(--primary)', all.length - aktif.length ? (all.length - aktif.length) + ' nonaktif' : 'Semua aktif')}
+          ${o.kategoriPetugas.map((k, i) => kpiMini(k, count(aktif, (p) => p.Kategori === k), k === 'Mahasiswa' ? 'school' : k === 'Dosen' ? 'user-round' : 'building-2', ['var(--primary)', 'var(--st-aktif)', 'var(--pr-rencana)'][i],
+            all.filter((p) => p.Kategori === k).reduce((n, p) => n + p._tugas, 0) + ' penugasan')).join('')}
+        </div>
+        <div class="card filter-card"><div class="filters">
+          <label class="search">${icon('search', 18)}<input id="pt-q" type="search" placeholder="Cari nama atau keterangan…" value="${esc(f.q)}" aria-label="Cari petugas"></label>
+          ${DATA.select('pt-kat', 'Semua kategori', o.kategoriPetugas, f.kategori, 'Kategori')}
+          <label class="toggle sm"><input type="checkbox" id="pt-all" ${f.semua ? 'checked' : ''}><span class="tg"></span><span>Tampilkan yang nonaktif</span></label>
+        </div></div>
+        <section class="card list-card" id="pt-res"></section>`;
+      UI.$('#pt-q', body).oninput = UI.debounce((e) => { f.q = e.target.value.trim(); draw(); }, 150);
+      UI.$('#pt-kat', body).onchange = (e) => { f.kategori = e.target.value; draw(); };
+      UI.$('#pt-all', body).onchange = (e) => { f.semua = e.target.checked; draw(); };
+      UI.$('#pt-res', body).addEventListener('click', (e) => {
+        const row = e.target.closest('[data-id]');
+        if (row && DATA.can('promosi', 'w')) FORMS.petugasForm(row.dataset.id);
+        else if (row) { STATE.f.promosi.tab = 'kegiatan'; STATE.f.promosi.petugas = row.dataset.id; APP.refreshView(); }
+      });
+      draw();
     }
   };
 
@@ -499,7 +587,7 @@ const PAGES = (() => {
       });
       if (mode !== 'dok') STATE.promosi.forEach((r) => {
         if (f.status && r.Status !== f.status) return;
-        out.push({ date: r._tgl, type: 'promosi', id: r.ID_Promosi, status: r.Status, title: r.Nama_Sekolah, kind: 'Promosi sekolah', sub: [r.Kota_Alamat, r.PIC].filter(Boolean).join(' • ') });
+        out.push({ date: r._tgl, type: 'promosi', id: r.ID_Promosi, status: r.Status, title: r.Nama_Sekolah, kind: r.Jenis_Kegiatan ? 'Promosi · ' + r._jenis : 'Promosi sekolah', sub: [r.Kota_Alamat, r._ptg.length ? r._ptg.map((p) => p.Nama_Petugas).join(', ') : ''].filter(Boolean).join(' • ') });
       });
       return out.filter((e) => e.date);
     },
@@ -614,14 +702,14 @@ const PAGES = (() => {
   const REPORTS = [
     { id: 'aktif', title: 'Rekap dokumen yang berlaku', desc: 'MoU, MoA, dan IA yang masih berlaku (Aktif, Akan Berakhir, Segera Berakhir).', icon: 'handshake', accent: 'var(--primary)', tag: 'Rekap', filters: ['dokumen', 'kategori', 'lingkup', 'tahun'] },
     { id: 'berakhir', title: 'Akan & sudah berakhir', desc: 'Daftar prioritas perpanjangan atau penutupan kerja sama.', icon: 'triangle-alert', accent: 'var(--st-segera)', tag: 'Prioritas', filters: ['dokumen', 'kategori', 'statusBerakhir'] },
-    { id: 'promosi', title: 'Rekap kegiatan promosi', desc: 'Kunjungan promosi sekolah pada periode tertentu.', icon: 'megaphone', accent: 'var(--pr-terlaksana)', tag: 'Promosi', filters: ['dari', 'sampai', 'statusPromosi'] },
+    { id: 'promosi', title: 'Rekap kegiatan promosi', desc: 'Kegiatan promosi sekolah (jenis, petugas, catatan) pada periode tertentu.', icon: 'megaphone', accent: 'var(--pr-terlaksana)', tag: 'Promosi', filters: ['dari', 'sampai', 'statusPromosi', 'jenisKegiatan'] },
     { id: 'belumIA', title: 'MoU & MoA belum memiliki IA', desc: 'Dokumen kerja sama yang belum punya Implementation Agreement (IA lewat MoA ikut dihitung untuk MoU).', icon: 'file-check', accent: 'var(--pr-rencana)', tag: 'IA', filters: ['kategori', 'lingkup', 'kadaluarsa'] }
   ];
 
   const laporan = {
     title: 'Laporan',
     previewCount(id, f) {
-      if (id === 'promosi') return STATE.promosi.filter((r) => (!f.dari || r._tgl >= f.dari) && (!f.sampai || r._tgl <= f.sampai) && (!f.status || r.Status === f.status)).length;
+      if (id === 'promosi') return STATE.promosi.filter((r) => (!f.dari || r._tgl >= f.dari) && (!f.sampai || r._tgl <= f.sampai) && (!f.status || r.Status === f.status) && (!f.jenisKegiatan || r.Jenis_Kegiatan === f.jenisKegiatan)).length;
       const docs = id === 'belumIA' ? STATE.mou.concat(STATE.moa) : (f.dokumen ? STATE[f.dokumen] : DATA.allDocs());
       return docs.filter((r) => {
         if (f.kategori && r._m.Kategori_Mitra !== f.kategori) return false;
@@ -642,6 +730,7 @@ const PAGES = (() => {
         lingkup: (id) => `<div class="field sm"><label for="${id}-lk">Lingkup</label>${DATA.select(id + '-lk', 'Semua lingkup', STATE.options.lingkup, '').replace('<select', '<select data-k="lingkup"')}</div>`,
         tahun: (id) => `<div class="field sm"><label for="${id}-th">Tahun mulai</label>${DATA.select(id + '-th', 'Semua tahun', tahun, '').replace('<select', '<select data-k="tahun"')}</div>`,
         statusBerakhir: (id) => `<div class="field sm"><label for="${id}-st">Status</label>${DATA.select(id + '-st', 'Akan, segera & sudah berakhir', ['Akan Berakhir', 'Segera Berakhir', 'Kadaluarsa'], '').replace('<select', '<select data-k="status"')}</div>`,
+        jenisKegiatan: (id) => `<div class="field sm"><label for="${id}-jk">Jenis kegiatan</label>${DATA.select(id + '-jk', 'Semua jenis', STATE.options.jenisKegiatan, '').replace('<select', '<select data-k="jenisKegiatan"')}</div>`,
         statusPromosi: (id) => `<div class="field sm"><label for="${id}-st">Status</label>${DATA.select(id + '-st', 'Semua status', ST_PR, '').replace('<select', '<select data-k="status"')}</div>`,
         dari: (id) => `<div class="field sm"><label for="${id}-dari">Dari tanggal</label><input type="date" class="input" id="${id}-dari" data-k="dari" value="${awalTahun}"></div>`,
         sampai: (id) => `<div class="field sm"><label for="${id}-sampai">Sampai tanggal</label><input type="date" class="input" id="${id}-sampai" data-k="sampai" value="${t}"></div>`,
@@ -661,7 +750,7 @@ const PAGES = (() => {
         </section>`).join('')}</div>
         <section class="card export-card">
           <div class="rep-head"><span class="rep-ic" style="--accent:var(--st-aktif)">${icon('download', 20)}</span><div><h2 class="card-title">Ekspor Excel format SIMKERMA</h2>
-            <p class="card-sub">Semua MoU, MoA, IA, dan Mitra dalam satu berkas Excel dengan kolom seperti data SIMKERMA (NOMOR, JUDUL, AWAL, AKHIR, DIKJAR, …, URL DOKUMEN), ditambah status masa berlaku.</p></div>
+            <p class="card-sub">Semua MoU, MoA, IA, dan Mitra dengan kolom seperti data SIMKERMA (NOMOR, JUDUL, AWAL, AKHIR, …, URL DOKUMEN) beserta status masa berlaku, ditambah sheet Promosi (format Template Promosi) dan Petugas.</p></div>
             <button type="button" class="btn btn-outline" id="lap-xlsx">${icon('download', 16)} Unduh Excel</button></div>
         </section>
         <section class="card" id="arsip">
@@ -897,60 +986,72 @@ const PAGES = (() => {
   // =========================================================================
   const impor = {
     title: 'Impor Data',
-    st: { parsed: null, hasil: null, mode: 'lewati', nama: '', siap: false, filter: '' },
+    st: { parsed: null, hasil: null, mode: 'lewati', nama: '', siap: false, filter: '', asal: '' },
     render(el) {
       const s = this.st;
-      const J = { mou: 'MoU', moa: 'MoA', ia: 'IA' };
+      const isPr = s.parsed && s.parsed.jenis === 'promosi';
+      const dropBox = (id, jenis, judul, sub) => `
+        <label class="drop ${s.asal === jenis && s.nama ? 'has' : ''}" for="${id}" data-drop="${id}" data-jenis="${jenis}">
+          <span class="drop-ic">${icon('upload', 22)}</span>
+          <span class="drop-t">${s.asal === jenis && s.nama ? esc(s.nama) : judul}</span>
+          <span class="drop-s">${sub}</span>
+        </label>
+        <input type="file" id="${id}" data-jenis="${jenis}" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>`;
       el.innerHTML = `
         ${DATA.head({
           eyebrow: icon('upload', 14) + ' Khusus Admin',
           title: 'Impor Data dari Excel',
-          lead: 'Masukkan data MoU, MoA, dan IA sekaligus dari berkas Excel ekspor SIMKERMA. Data diperiksa dulu; tidak ada yang tersimpan sebelum Anda menekan "Impor sekarang".'
+          lead: 'Masukkan banyak data sekaligus dari Excel: data kerja sama dari SIMKERMA, atau data promosi lama. Data diperiksa dulu; tidak ada yang tersimpan sebelum Anda menekan "Impor sekarang".'
         })}
-        <div class="steps">
-          <div class="step ${s.parsed && s.parsed.jenis === 'mou' ? 'on' : ''}"><b>1</b><span>Impor <b>MoU</b> lebih dulu</span></div>
-          <div class="step ${s.parsed && s.parsed.jenis === 'moa' ? 'on' : ''}"><b>2</b><span>Lalu <b>MoA</b> (mencari MoU induk dari kolom NOMOR MOU)</span></div>
-          <div class="step ${s.parsed && s.parsed.jenis === 'ia' ? 'on' : ''}"><b>3</b><span>Terakhir <b>IA</b> (mencari induk dari kolom NOMOR MoA)</span></div>
+        <div class="grid g-2 imp-choose">
+          <section class="card imp-card ${s.asal === 'ks' ? 'on' : ''}">
+            <div class="rep-head"><span class="rep-ic" style="--accent:var(--primary)">${icon('handshake', 20)}</span><div><h2 class="card-title">Impor MoU / MoA / IA</h2>
+              <p class="card-sub">Excel ekspor SIMKERMA. Urutan: <b>MoU</b> → <b>MoA</b> → <b>IA</b>, agar dokumen induk sudah ada.</p></div></div>
+            ${dropBox('imp-file', 'ks', 'Pilih berkas Excel kerja sama', 'Jenis dikenali dari kolom NOMOR MOU / NOMOR MOA / NOMOR IA.')}
+          </section>
+          <section class="card imp-card ${s.asal === 'promosi' ? 'on' : ''}">
+            <div class="rep-head"><span class="rep-ic" style="--accent:var(--pr-terlaksana)">${icon('megaphone', 20)}</span><div><h2 class="card-title">Impor Data Promosi</h2>
+              <p class="card-sub">Data kegiatan promosi lama: sekolah, jenis kegiatan, tanggal, status, 1–4 petugas, catatan.</p></div></div>
+            ${dropBox('imp-file-pr', 'promosi', 'Pilih berkas Excel promosi', 'Gunakan Template Promosi. Kolom yang tidak ada datanya cukup dikosongkan.')}
+            <button type="button" class="btn btn-outline btn-sm imp-tpl" id="imp-tpl">${icon('download', 15)} Unduh template Excel promosi</button>
+          </section>
         </div>
         <section class="card imp-card">
-          <div class="imp-grid">
-            <div>
-              <label class="drop" for="imp-file" data-drop="imp-file">
-                <span class="drop-ic">${icon('upload', 22)}</span>
-                <span class="drop-t">${s.nama ? esc(s.nama) : 'Pilih berkas Excel (.xlsx)'}</span>
-                <span class="drop-s">Jenis dokumen dikenali otomatis dari kolom NOMOR MOU / NOMOR MOA / NOMOR IA.</span>
-              </label>
-              <input type="file" id="imp-file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
-            </div>
-            <div class="imp-opts">
-              <div class="field"><label>Jika nomor sudah ada di SIMPEKA</label>
-                <div class="seg seg-form"><label><input type="radio" name="imp-mode" value="lewati" ${s.mode === 'lewati' ? 'checked' : ''}><span>Lewati</span></label><label><input type="radio" name="imp-mode" value="perbarui" ${s.mode === 'perbarui' ? 'checked' : ''}><span>Perbarui datanya</span></label></div>
-                <p class="hint">"Perbarui" menimpa isi dokumen lama dengan isi Excel; tautan/berkas lama tetap dipertahankan bila kolom URL kosong.</p></div>
-            </div>
+          <div class="imp-opts">
+            <div class="field"><label>Jika data sudah ada di SIMPEKA</label>
+              <div class="seg seg-form"><label><input type="radio" name="imp-mode" value="lewati" ${s.mode === 'lewati' ? 'checked' : ''}><span>Lewati</span></label><label><input type="radio" name="imp-mode" value="perbarui" ${s.mode === 'perbarui' ? 'checked' : ''}><span>Perbarui datanya</span></label></div>
+              <p class="hint">${isPr ? 'Kegiatan dikenali dari ID SIMPEKA, atau nama sekolah + tanggal rencana. "Perbarui" menimpa isinya; petugas & bukti lama dipertahankan bila kolomnya kosong.'
+                : 'Dokumen dikenali dari nomornya. "Perbarui" menimpa isi dokumen lama dengan isi Excel; tautan/berkas lama dipertahankan bila kolom URL kosong.'}</p></div>
           </div>
-          <div id="imp-info"></div>
+          <div id="imp-info">${s.parsed ? '' : `<p class="t-sub">${icon('info', 14)} Pilih berkas di salah satu kotak di atas.</p>`}</div>
         </section>
         <section class="card list-card" id="imp-res" ${s.parsed ? '' : 'hidden'}></section>`;
 
-      const fileIn = UI.$('#imp-file', el);
-      const drop = UI.$('[data-drop="imp-file"]', el);
-      const baca = async (file) => {
+      const baca = async (file, asal, input) => {
         if (!file) return;
         if (!/\.xlsx?$/i.test(file.name)) return UI.toast('Pilih berkas Excel (.xlsx).', 'error');
         UI.loading(true, 'Membaca ' + file.name + '…');
         try {
-          s.file = file; s.nama = file.name;
-          s.parsed = await IMPORTER.parse(file);
+          s.file = file; s.nama = file.name; s.asal = asal;
+          s.parsed = await IMPORTER.parse(file, asal === 'promosi' ? 'promosi' : '');
           s.hasil = null; s.siap = false; s.filter = '';
           this.render(el);
           await this.periksa(el);
         } catch (e) { s.parsed = null; s.hasil = null; s.nama = ''; this.render(el); UI.toast(e.message, 'error'); }
-        finally { UI.loading(false); fileIn.value = ''; }
+        finally { UI.loading(false); if (input) input.value = ''; }
       };
-      fileIn.onchange = () => baca(fileIn.files[0]);
-      ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); }));
-      ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
-      drop.addEventListener('drop', (e) => baca(e.dataTransfer.files[0]));
+      UI.$$('input[type=file][data-jenis]', el).forEach((inp) => { inp.onchange = () => baca(inp.files[0], inp.dataset.jenis, inp); });
+      UI.$$('[data-drop]', el).forEach((drop) => {
+        ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+        ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
+        drop.addEventListener('drop', (e) => baca(e.dataTransfer.files[0], drop.dataset.jenis));
+      });
+      UI.$('#imp-tpl', el).onclick = async () => {
+        UI.loading(true, 'Menyiapkan template…');
+        try { await IMPORTER.templatePromosi(); UI.toast('Template promosi diunduh'); }
+        catch (e) { UI.toast(e.message, 'error'); }
+        finally { UI.loading(false); }
+      };
       UI.$$('[name="imp-mode"]', el).forEach((x) => x.addEventListener('change', async () => { s.mode = x.value; if (s.parsed) await this.periksa(el); }));
       if (s.parsed) this.tampil(el);
     },
@@ -967,11 +1068,12 @@ const PAGES = (() => {
     },
 
     tampil(el) {
-      const s = this.st, p = s.parsed, J = { mou: 'MoU', moa: 'MoA', ia: 'IA' };
+      const s = this.st, p = s.parsed, J = { mou: 'MoU', moa: 'MoA', ia: 'IA', promosi: 'Promosi' };
+      const isPr = p && p.jenis === 'promosi';
       const info = UI.$('#imp-info', el), res = UI.$('#imp-res', el);
       if (!p || !info) return;
       info.innerHTML = `<div class="imp-sum">
-          <span class="chip chip-doc doc-${p.jenis}">${J[p.jenis]}</span>
+          <span class="chip ${isPr ? 'chip-green' : 'chip-doc doc-' + p.jenis}">${J[p.jenis]}</span>
           <span><b>${p.rows.length}</b> baris data dari sheet "${esc(p.sheet)}"</span>
           <span class="t-sub">Kolom dikenali: ${p.dikenali.length}${p.tidakDikenali.length ? ` • diabaikan: ${p.tidakDikenali.map(esc).join(', ')}` : ''}</span>
         </div>`;
@@ -987,28 +1089,29 @@ const PAGES = (() => {
           <div class="seg" id="imp-f">${[['', 'Semua', h.hasil.length], ['baru', 'Baru', r.baru], ['perbarui', 'Diperbarui', r.perbarui], ['lewati', 'Dilewati', r.lewati], ['gagal', 'Gagal', r.gagal], ['warn', 'Ada catatan', h.hasil.filter((x) => x.peringatan.length).length]]
             .filter(([v, , n]) => !v || n).map(([v, l, n]) => `<button type="button" data-f="${v}" class="${s.filter === v ? 'on' : ''}">${l} <span class="cnt">${n}</span></button>`).join('')}</div></div>
         ${r.mitraBaru ? `<div class="note pad-x">${icon('building-2', 16)}<span>${r.mitraBaru} mitra baru akan otomatis dibuat di Master Mitra (memakai kolom JENIS MITRA, KATEGORI MITRA, NEGARA, BENUA, dan lingkup).</span></div>` : ''}
-        ${r.gagal ? `<div class="note warn pad-x">${icon('triangle-alert', 16)}<span>${r.gagal} baris gagal dan <b>tidak</b> akan diimpor. Perbaiki di Excel lalu unggah ulang, atau impor dulu baris yang valid${p.jenis !== 'mou' ? '. Bila pesan "induk belum ada", impor berkas MoU/MoA terlebih dahulu' : ''}.</span></div>` : ''}
+        ${r.petugasBaru ? `<div class="note pad-x">${icon('users', 16)}<span>${r.petugasBaru} petugas baru akan otomatis ditambahkan ke Master Petugas (dengan kategori dari kolom KATEGORI).</span></div>` : ''}
+        ${r.gagal ? `<div class="note warn pad-x">${icon('triangle-alert', 16)}<span>${r.gagal} baris gagal dan <b>tidak</b> akan diimpor. Perbaiki di Excel lalu unggah ulang, atau impor dulu baris yang valid${p.jenis === 'moa' || p.jenis === 'ia' ? '. Bila pesan "induk belum ada", impor berkas MoU/MoA terlebih dahulu' : ''}.</span></div>` : ''}
         <div class="tbl-wrap show-sm"><table class="tbl tbl-tight">
-          <thead><tr><th>Baris</th><th>Nomor</th><th>Hasil</th><th>Keterangan</th></tr></thead>
-          <tbody>${rows.map((x) => `<tr><td class="mono">${x.baris}</td><td class="w-nomor"><span class="mono sm">${DATA.nomorHtml(x.nomor)}</span></td>
+          <thead><tr><th>Baris</th><th>${isPr ? 'Sekolah' : 'Nomor'}</th><th>Hasil</th><th>Keterangan</th></tr></thead>
+          <tbody>${rows.map((x) => `<tr><td class="mono">${x.baris}</td><td class="w-nomor">${isPr ? `<span class="t-strong">${esc(x.nomor)}</span>` : `<span class="mono sm">${DATA.nomorHtml(x.nomor)}</span>`}</td>
             <td><span class="badge ${cls[x.status]}">${label[x.status]}</span></td>
             <td>${esc(x.pesan)}${x.peringatan.map((w) => `<div class="t-sub warn-t">${icon('info', 12)} ${esc(w)}</div>`).join('')}</td></tr>`).join('')}</tbody>
         </table></div>
         <div class="imp-foot">
-          ${h.dryRun ? `<span class="t-sub">${bisa} dari ${h.hasil.length} baris siap diimpor${r.lewati ? ` • ${r.lewati} dilewati karena nomor sudah ada` : ''}.</span>
+          ${h.dryRun ? `<span class="t-sub">${bisa} dari ${h.hasil.length} baris siap diimpor${r.lewati ? ` • ${r.lewati} dilewati karena ${isPr ? 'kegiatannya' : 'nomornya'} sudah ada` : ''}.</span>
             <span class="spacer"></span>
             <button type="button" class="btn btn-outline" id="imp-cek">${icon('refresh-cw', 16)} Periksa ulang</button>
             <button type="button" class="btn btn-primary" id="imp-go" ${bisa ? '' : 'disabled'}>${icon('upload', 16)} Impor sekarang (${bisa})</button>`
-          : `<span class="t-sub">${icon('circle-check', 14)} Selesai: ${r.baru} baru, ${r.perbarui} diperbarui${r.mitraBaru ? ', ' + r.mitraBaru + ' mitra baru' : ''}.</span><span class="spacer"></span>
-            ${p.jenis !== 'ia' ? `<span class="t-sub">Berikutnya: impor ${p.jenis === 'mou' ? 'MoA' : 'IA'}.</span>` : ''}
+          : `<span class="t-sub">${icon('circle-check', 14)} Selesai: ${r.baru} baru, ${r.perbarui} diperbarui${r.mitraBaru ? ', ' + r.mitraBaru + ' mitra baru' : ''}${r.petugasBaru ? ', ' + r.petugasBaru + ' petugas baru' : ''}.</span><span class="spacer"></span>
+            ${p.jenis === 'mou' || p.jenis === 'moa' ? `<span class="t-sub">Berikutnya: impor ${p.jenis === 'mou' ? 'MoA' : 'IA'}.</span>` : ''}
             <button type="button" class="btn btn-primary" id="imp-lihat">${icon('arrow-right', 16)} Lihat data ${J[p.jenis]}</button>`}
         </div>`;
       UI.$('#imp-f', el).onclick = (e) => { const b = e.target.closest('[data-f]'); if (b) { s.filter = b.dataset.f; this.tampil(el); } };
       const cek = UI.$('#imp-cek', el); if (cek) cek.onclick = () => this.periksa(el);
-      const lihat = UI.$('#imp-lihat', el); if (lihat) lihat.onclick = () => { const j = p.jenis; this.st = { parsed: null, hasil: null, mode: s.mode, nama: '', siap: false, filter: '' }; APP.go(j, {}); };
+      const lihat = UI.$('#imp-lihat', el); if (lihat) lihat.onclick = () => { const j = p.jenis; this.st = { parsed: null, hasil: null, mode: s.mode, nama: '', siap: false, filter: '', asal: '' }; APP.go(j, j === 'promosi' ? { tab: 'kegiatan' } : {}); };
       const goBtn = UI.$('#imp-go', el);
       if (goBtn) goBtn.onclick = async () => {
-        const ok = await UI.confirmDlg({ title: 'Impor ' + bisa + ' ' + J[p.jenis] + '?', message: (r.baru ? r.baru + ' data baru ditambahkan' : '') + (r.perbarui ? (r.baru ? ', ' : '') + r.perbarui + ' data diperbarui' : '') + (r.mitraBaru ? ', dan ' + r.mitraBaru + ' mitra baru dibuat' : '') + '. Baris yang gagal tidak diimpor.', okText: 'Impor sekarang' });
+        const ok = await UI.confirmDlg({ title: 'Impor ' + bisa + ' ' + J[p.jenis] + '?', message: (r.baru ? r.baru + ' data baru ditambahkan' : '') + (r.perbarui ? (r.baru ? ', ' : '') + r.perbarui + ' data diperbarui' : '') + (r.mitraBaru ? ', dan ' + r.mitraBaru + ' mitra baru dibuat' : '') + (r.petugasBaru ? ', dan ' + r.petugasBaru + ' petugas baru ditambahkan' : '') + '. Baris yang gagal tidak diimpor.', okText: 'Impor sekarang' });
         if (!ok) return;
         UI.loading(true, 'Mengimpor ' + bisa + ' baris…');
         try {

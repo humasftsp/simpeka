@@ -22,7 +22,7 @@ Perkiraan waktu: 30–45 menit untuk pertama kali.
 
 ---
 
-## Pembaruan ke Versi 2 — Master Mitra, MoU, MoA, IA (untuk instalasi yang sudah berjalan)
+## Pembaruan ke Versi 2 — Master Mitra, MoU, MoA, IA, dan Promosi (untuk instalasi yang sudah berjalan)
 
 Versi 2 mengganti sheet lama `Kerja Sama` dan `IA` dengan struktur baru mengikuti format Excel SIMKERMA:
 
@@ -32,14 +32,18 @@ Versi 2 mengganti sheet lama `Kerja Sama` dan `IA` dengan struktur baru mengikut
 | `MoU` | Nomor MoU, judul, masa berlaku, bidang tridarma, PIC, URL dokumen | satu MoU → banyak MoA, banyak IA |
 | `MoA` | Sama seperti MoU + **Pengguna** (unit/prodi) + **ID_MoU** (kosong = tanpa MoU) | ke MoU (opsional) |
 | `IA` | Sama seperti MoU + **Jenis_Induk** (MoA / MoU / kosong) + **Kelengkapan** | ke MoA, ke MoU, atau mandiri |
+| `Petugas` | Master petugas promosi: nama, **kategori (Dosen / Tendik / Mahasiswa)**, keterangan, status Aktif/Nonaktif | dipakai oleh kegiatan promosi |
+| `Promosi` *(diperbarui)* | + **Jenis_Kegiatan** (Presentasi / Pameran (Stand) / Lainnya), **Keterangan_Jenis**, **ID_Petugas** + **Petugas** (2–4 orang), **Catatan** | ke Petugas |
 
 Aturan yang dijaga otomatis oleh sistem:
 - **MoA yang didahului MoU** wajib memakai mitra yang sama dengan MoU-nya; formulir MoA kini menanyakan *"Didahului MoU dengan mitra yang sama?"* dan tidak bisa disimpan sebelum dijawab.
 - **Nomor dokumen tidak boleh ganda** (beda spasi atau huruf besar-kecil tetap dianggap sama).
 - **Ganti nama mitra** di Master Mitra → nama di semua MoU/MoA/IA ikut berubah.
 - Mitra yang masih dipakai dokumen, dan MoU/MoA yang masih punya turunan, **tidak bisa dihapus**.
+- **Kegiatan promosi berstatus Terlaksana wajib 2–4 petugas**; yang masih Rencana boleh 0–4. Jenis "Lainnya" wajib diberi keterangan.
+- Petugas yang sudah pernah bertugas tidak bisa dihapus — ubah statusnya menjadi **Nonaktif** (mis. mahasiswa yang lulus) agar tidak muncul lagi di pilihan.
 
-> ⚠️ **Data uji lama tidak dipindahkan.** Sheet `Kerja Sama` dan `IA` lama hanya diganti nama menjadi `Arsip v1 - …` (tidak dihapus). Data asli dimasukkan ulang lewat menu **Impor Data Excel**. Sheet `Pengguna`, `Promosi`, dan `Konfigurasi` tetap dipakai — akun dan kata sandi tidak berubah.
+> ⚠️ **Data uji lama tidak dipindahkan.** Sheet `Kerja Sama` dan `IA` lama hanya diganti nama menjadi `Arsip v1 - …` (tidak dihapus). Data asli dimasukkan ulang lewat menu **Impor Data Excel**. Sheet `Pengguna`, `Promosi`, dan `Konfigurasi` tetap dipakai — akun dan kata sandi tidak berubah. Pada sheet `Promosi`, kolom baru ditambahkan di sebelah kanan; isian kolom **PIC** lama dipindahkan ke kolom **Catatan** ("PIC (data lama): …") karena kategori orangnya tidak diketahui — lengkapi petugasnya dari aplikasi.
 
 ### U1. Ganti kode backend
 Buka proyek Apps Script → `Kode.gs` → pilih semua (Ctrl+A) → tempel isi **`Kode.gs` versi 2** → Simpan (Ctrl+S).
@@ -47,9 +51,9 @@ Buka proyek Apps Script → `Kode.gs` → pilih semua (Ctrl+A) → tempel isi **
 ### U2. Jalankan `migrasiV2` — sekali saja
 Dropdown fungsi → **`migrasiV2`** → **Run**. Execution log harus berakhir dengan:
 ```
-✅ Migrasi selesai. Sheet baru: Mitra, MoU, MoA, IA, Log_Email.
+✅ Migrasi selesai. Sheet aktif: Mitra, MoU, MoA, IA, Promosi, Petugas, Log_Email.
 ```
-Menjalankannya dua kali aman — yang kedua hanya menulis "Database sudah memakai struktur versi 2".
+Menjalankannya dua kali aman — yang kedua hanya menulis "Database sudah memakai struktur terbaru".
 
 ### U3. Deploy versi baru (URL tetap sama)
 **Deploy** → **Manage deployments** → ikon pensil ✏️ → **Version: New version** → **Deploy**. Jangan pilih *New deployment*.
@@ -77,6 +81,20 @@ Masuk sebagai **Admin** → menu **Impor Data Excel**:
 Mitra yang belum ada **dibuat otomatis** dari kolom MITRA, JENIS MITRA, KATEGORI MITRA, NEGARA, BENUA, dan centang INTERNASIONAL/NASIONAL/LOKAL. Nama mitra yang sama (tanpa peduli huruf besar-kecil) dipakai ulang.
 
 Pilihan **"Jika nomor sudah ada"**: *Lewati* (aman, default) atau *Perbarui datanya* (menimpa isi dokumen lama dengan isi Excel — dipakai bila Excel adalah versi yang lebih baru).
+
+### U5b. Impor data promosi lama (khusus Admin)
+1. Menu **Impor Data Excel** → kotak **Impor Data Promosi** → **Unduh template Excel promosi** (atau pakai berkas `Template_Promosi.xlsx` yang dikirim bersama panduan ini).
+2. Isi satu baris per kegiatan. Kolom yang tidak ada datanya cukup dikosongkan. Lembar **Petunjuk** di dalam template menjelaskan setiap kolom.
+3. Pilih berkasnya di kotak **Impor Data Promosi** → baca hasil pemeriksaan → **Impor sekarang**.
+
+Yang dilakukan sistem saat impor promosi:
+- Tulisan "Pameran"/"Stand" dibaca sebagai **Pameran (Stand)**; jenis lain (mis. "Webinar") menjadi **Lainnya** dengan keterangan "Webinar". Status "selesai/sudah" dibaca **Terlaksana**; status kosong = Terlaksana bila ada tanggal realisasi.
+- Nama petugas yang **belum terdaftar** otomatis masuk Master Petugas — **wajib** diisi KATEGORI-nya (Dosen/Tendik/Mahasiswa); bila kosong, baris itu ditolak dengan pesan jelas. Nama yang sudah terdaftar dicocokkan tanpa peduli huruf besar-kecil.
+- Data lama yang **jenis kegiatannya kosong** atau **Terlaksana dengan kurang dari 2 petugas** tetap diimpor, diberi catatan kuning untuk dilengkapi di aplikasi.
+- Kegiatan dikenali dari **ID SIMPEKA**, atau **nama sekolah + tanggal rencana**. Baris ganda di berkas yang sama ditolak.
+- Kolom **PIC** dari berkas lama (bila ada) dipindahkan ke Catatan.
+
+Berkas Excel kerja sama yang salah dimasukkan ke kotak promosi (atau sebaliknya) ditolak dengan pesan yang menunjuk kotak yang benar.
 
 ### U6. Hasil uji berkas contoh Anda (perlu diperbaiki di Excel sebelum impor)
 Ketiga berkas yang Anda kirim sudah diuji dengan sistem ini:
@@ -144,7 +162,7 @@ Hasilnya di Google Drive:
 
 ```
 SIMPEKA/
-  Database SIMPEKA FTSP   (sheet: Mitra, MoU, MoA, IA, Promosi, Pengguna, Log_Email, Konfigurasi)
+  Database SIMPEKA FTSP   (sheet: Mitra, MoU, MoA, IA, Promosi, Petugas, Pengguna, Log_Email, Konfigurasi)
   Kerja Sama/ (subfolder MoU, MoA)  IA/  Promosi/  Laporan/
 ```
 
@@ -152,7 +170,7 @@ Setup juga mendaftarkan email Anda sebagai **Admin pertama** dan memasang trigge
 
 ### A5. (Opsional) Data contoh
 
-Jalankan `isiDataContoh` untuk beberapa mitra, MoU, MoA, IA (dengan status berbeda) dan promosi. **Sebelum memasukkan data asli**, jalankan `hapusDataContoh`. Data asli paling cepat dimasukkan lewat menu **Impor Data Excel** (lihat U5).
+Jalankan `isiDataContoh` untuk beberapa mitra, MoU, MoA, IA (dengan status berbeda), 4 petugas, dan 3 kegiatan promosi. **Sebelum memasukkan data asli**, jalankan `hapusDataContoh`. Data asli paling cepat dimasukkan lewat menu **Impor Data Excel** (lihat U5).
 
 ### A6. Deploy sebagai Web App
 
@@ -297,9 +315,13 @@ Menu **Pengguna** → **Tambah pengguna** → email, nama, peran. Biarkan **"Kir
 | 6 | `isiDataContoh` | Empat status dengan warna berbeda |
 | 7 | Menu **Pengingat Email** → *Kirim email uji ke saya*, lalu *Jalankan sekarang* dua kali | Email uji masuk; email asli hanya terkirim sekali (riwayat bertambah sekali) |
 | 8 | Tambah promosi | Muncul di Kalender pada tanggal rencana |
+| 8b | Promosi → status **Terlaksana** dengan 1 petugas | Ditolak: "wajib mencatat 2–4 petugas"; dengan 2 petugas tersimpan |
+| 8c | Formulir promosi → "Petugas belum terdaftar? Tambah petugas baru" | Petugas baru masuk tab **Petugas** dengan kategorinya |
+| 8d | Jenis kegiatan **Lainnya** tanpa keterangan | Ditolak; dengan keterangan tersimpan dan tampil di daftar |
+| 8e | Impor Data Promosi dengan `Template_Promosi.xlsx` | Hasil pemeriksaan tampil; petugas baru dibuat; Tim Promosi hanya bisa melihat |
 | 9 | Tambah IA ke MoA, IA ke MoU, IA mandiri | Kolom IA pada MoA/MoU bertambah |
 | 9b | Impor Excel MoU → MoA → IA | Hasil pemeriksaan sesuai U6; data muncul di menu masing-masing |
-| 9c | Laporan → **Unduh Excel** | Berkas Excel dengan sheet MoU, MoA, IA, Mitra |
+| 9c | Laporan → **Unduh Excel** | Berkas Excel dengan sheet MoU, MoA, IA, Mitra, Promosi, Petugas |
 | 10 | Unggah PDF/JPG; lalu berkas > 10 MB | Berkas masuk Drive; berkas besar ditolak |
 | 11 | Cetak keempat laporan | PDF terunduh dan muncul di Arsip |
 | 12 | Buka di HP, alihkan mode gelap | Tampilan rapi, menu bawah muncul |
@@ -345,6 +367,9 @@ Jangan memilih *New deployment* — itu menghasilkan URL `/exec` baru yang belum
 | Impor MoA/IA: "induk belum ada" | MoU/MoA induknya belum diimpor, atau nomornya berbeda | Impor MoU dulu; samakan nomor di Excel |
 | Impor: tanggal "tidak valid" | Sel tanggal berisi teks yang tidak dikenali | Gunakan format `21 Agustus 2024`, `2024-08-21`, atau `21/08/2024` |
 | "Mitra ini masih dipakai … tidak dapat dihapus" | Mitra punya dokumen | Hapus/pindahkan dokumennya dulu, atau biarkan |
+| "Kegiatan yang sudah Terlaksana wajib mencatat 2–4 petugas" | Status Terlaksana dengan 0–1 petugas | Tambahkan petugas, atau simpan sebagai Rencana dulu |
+| "Petugas ini tercatat di … kegiatan" saat menghapus | Petugas sudah pernah bertugas | Ubah status petugas menjadi **Nonaktif** |
+| Impor promosi: "belum terdaftar; isi KATEGORI …" | Nama petugas baru tanpa kategori | Isi kolom KATEGORI dengan Dosen, Tendik, atau Mahasiswa |
 
 ---
 

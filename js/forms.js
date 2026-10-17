@@ -48,19 +48,30 @@ const FORMS = (() => {
   // =========================================================================
   // PROMOSI
   // =========================================================================
+  const jenisLabel = (r) => r.Jenis_Kegiatan ? (r.Jenis_Kegiatan === 'Lainnya' ? 'Lainnya — ' + (r.Keterangan_Jenis || '') : r.Jenis_Kegiatan) : '';
+
   function promosiDetail(id) {
     const r = DATA.byId('promosi', id);
     if (!r) return UI.toast('Data tidak ditemukan.', 'error');
+    const o = STATE.options;
+    const kurang = r.Status === 'Terlaksana' && r._ptg.length < o.petugasMin;
+    const ptgList = r._ptg.length ? `<ul class="ptg-list">${r._ptg.map((p) => `<li><span class="avatar sm">${esc(UI.initials(p.Nama_Petugas))}</span>
+        <span class="t-main"><b>${esc(p.Nama_Petugas)}</b>${p.Keterangan ? `<small>${esc(p.Keterangan)}</small>` : ''}</span>${DATA.katChip(p.Kategori)}</li>`).join('')}</ul>`
+      : '<span class="muted">Belum ada petugas</span>';
     const body = `
       <div class="detail-hero" style="--accent:${UI.color(r.Status)}">
-        <div class="dh-top">${UI.badge(r.Status)}</div>
+        <div class="dh-top">${UI.badge(r.Status)}${DATA.jenisChip(r)}</div>
         <h3>${esc(r.Nama_Sekolah)}</h3><p>${icon('map-pin', 14)} ${esc(r.Kota_Alamat || '-')}</p>
       </div>
+      ${kurang ? `<div class="note warn">${icon('triangle-alert', 16)}<span>Kegiatan sudah Terlaksana tetapi petugasnya baru ${r._ptg.length}. Lengkapi menjadi ${o.petugasMin}–${o.petugasMax} orang.</span></div>` : ''}
+      ${!r.Jenis_Kegiatan ? `<div class="note warn">${icon('info', 16)}<span>Jenis kegiatan belum diisi (data lama). Tekan <b>Ubah data</b> untuk melengkapinya.</span></div>` : ''}
       ${dl([
         ['Nomor registrasi', `<span class="mono">${esc(r.ID_Promosi)}</span>`],
-        ['PIC', esc(r.PIC || '-')],
+        ['Jenis kegiatan', r.Jenis_Kegiatan ? esc(jenisLabel(r)) : '<span class="muted">Belum diisi</span>'],
         ['Tanggal rencana', UI.tgl(r.Tanggal_Rencana, true)],
         ['Tanggal realisasi', r.Tanggal_Realisasi ? UI.tgl(r.Tanggal_Realisasi, true) : '<span class="muted">-</span>'],
+        ['Petugas (' + r._ptg.length + ')', ptgList],
+        ['Catatan', r.Catatan ? `<span class="pre">${esc(r.Catatan)}</span>` : '<span class="muted">-</span>'],
         ['Bukti kegiatan', berkasBtn(r.Link_Bukti)]
       ])}
       ${trail(r)}`;
@@ -85,49 +96,179 @@ const FORMS = (() => {
   function promosiForm(id, preset) {
     const r = id ? DATA.byId('promosi', id) : Object.assign({ Status: 'Rencana' }, preset || {});
     const o = STATE.options;
+    // daftar petugas terpilih: { id } untuk yang terdaftar, { baru: true, Nama_Petugas, Kategori } untuk yang belum
+    const sel = (r._ptg || []).map((p) => ({ id: p.ID_Petugas }));
     const body = `<form class="form" id="f-pr" novalidate>
       <div class="id-box"><span>Nomor registrasi</span><b class="mono">${id ? esc(id) : 'Otomatis (PR-xxxx)'}</b></div>
       <div class="field"><label for="pr-sek">Nama sekolah <span class="req">*</span></label>
         <input class="input" id="pr-sek" name="Nama_Sekolah" maxlength="200" value="${esc(r.Nama_Sekolah)}" placeholder="Contoh: SMA Negeri 8 Jakarta" autocomplete="off"></div>
       <div class="field"><label for="pr-kota">Kota / alamat</label>
         <input class="input" id="pr-kota" name="Kota_Alamat" maxlength="300" value="${esc(r.Kota_Alamat)}" placeholder="Contoh: Bukit Duri, Jakarta Selatan"></div>
-      <div class="field"><label for="pr-pic">PIC (penanggung jawab)</label>
-        <input class="input" id="pr-pic" name="PIC" maxlength="200" value="${esc(r.PIC)}" placeholder="Nama dosen atau anggota tim"></div>
+      <div class="field"><label>Jenis kegiatan <span class="req">*</span></label>
+        <div class="seg seg-form">${o.jenisKegiatan.map((j) => `<label><input type="radio" name="Jenis_Kegiatan" value="${esc(j)}" ${r.Jenis_Kegiatan === j ? 'checked' : ''}><span>${esc(j)}</span></label>`).join('')}</div></div>
+      <div class="field" id="pr-ket-f" hidden><label for="pr-ket">Keterangan jenis kegiatan <span class="req">*</span></label>
+        <input class="input" id="pr-ket" name="Keterangan_Jenis" maxlength="200" value="${esc(r.Keterangan_Jenis)}" placeholder="Contoh: Webinar untuk siswa SMA, kunjungan sekolah ke kampus"></div>
       <div class="field"><label>Status <span class="req">*</span></label>
-        <div class="seg seg-form">${o.statusPromosi.map((s) => `<label><input type="radio" name="Status" value="${s}" ${r.Status === s ? 'checked' : ''}><span>${s}</span></label>`).join('')}</div></div>
+        <div class="seg seg-form">${o.statusPromosi.map((st) => `<label><input type="radio" name="Status" value="${st}" ${r.Status === st ? 'checked' : ''}><span>${st}</span></label>`).join('')}</div></div>
       <div class="row2">
         <div class="field"><label for="pr-ren">Tanggal rencana <span class="req">*</span></label><input type="date" class="input" id="pr-ren" name="Tanggal_Rencana" value="${esc(r.Tanggal_Rencana)}"></div>
         <div class="field"><label for="pr-real">Tanggal realisasi</label><input type="date" class="input" id="pr-real" name="Tanggal_Realisasi" value="${esc(r.Tanggal_Realisasi)}"></div>
       </div>
       <p class="hint" id="pr-hint"></p>
+      <div class="form-sec">Petugas <small id="pr-ptg-rule"></small></div>
+      <div class="field" id="pr-ptg-f"><input type="hidden" name="_petugas"><div id="pr-ptg"></div></div>
+      <div class="field"><label for="pr-cat">Catatan</label>
+        <textarea class="input" id="pr-cat" name="Catatan" rows="3" maxlength="1000" placeholder="Contoh: peserta ±120 siswa kelas XII; diundang Guru BK; dijadwalkan ulang karena ujian">${esc(r.Catatan)}</textarea></div>
       ${UI.fileField('pr-file', { label: 'Bukti kegiatan (foto/berita acara)', ada: !!r.Link_Bukti, maksMB: o.maksMB })}
     </form>`;
     UI.openDrawer({
-      title: id ? 'Ubah Promosi' : 'Jadwalkan Promosi', subtitle: 'Kunjungan promosi sekolah', icon: id ? 'pencil' : 'megaphone',
+      title: id ? 'Ubah Promosi' : 'Jadwalkan Promosi', subtitle: 'Kegiatan promosi sekolah', icon: id ? 'pencil' : 'megaphone',
       body: body, footer: footBtns('f-pr', id ? 'Simpan perubahan' : 'Simpan jadwal'),
       onMount(el) {
         bindClose(el);
         const form = UI.$('#f-pr', el);
         const getFile = UI.bindFileField(el, 'pr-file', o.maksMB);
         const hint = UI.$('#pr-hint', el);
+        const box = UI.$('#pr-ptg', el);
+        const status = () => { const x = form.querySelector('[name="Status"]:checked'); return x ? x.value : ''; };
+        const jenis = () => { const x = form.querySelector('[name="Jenis_Kegiatan"]:checked'); return x ? x.value : ''; };
+        const nama = (x) => x.baru ? x.Nama_Petugas : (DATA.byId('petugas', x.id) || {}).Nama_Petugas || x.id;
+        const kat = (x) => x.baru ? x.Kategori : (DATA.byId('petugas', x.id) || {}).Kategori || '';
+        let tambahBaru = false;
+
+        function drawPetugas() {
+          const pilihan = STATE.petugas.filter((p) => p.Status !== 'Nonaktif' && !sel.some((x) => x.id === p.ID_Petugas))
+            .sort((a, b) => a.Nama_Petugas.localeCompare(b.Nama_Petugas, 'id'))
+            .map((p) => ({ value: p.ID_Petugas, label: p.Nama_Petugas + ' — ' + p.Kategori }));
+          const penuh = sel.length >= o.petugasMax;
+          box.innerHTML = `
+            ${sel.length ? `<ul class="ptg-pick">${sel.map((x, i) => `<li><span class="num">${i + 1}</span><span class="t-main"><b>${esc(nama(x))}</b>${x.baru ? '<small>petugas baru — didaftarkan saat disimpan</small>' : ''}</span>
+              ${DATA.katChip(kat(x))}<button type="button" class="icon-btn sm" data-rm="${i}" aria-label="Hapus ${esc(nama(x))} dari daftar">${icon('x', 16)}</button></li>`).join('')}</ul>`
+              : `<div class="mini-empty">${icon('users', 18)}<span>Belum ada petugas dipilih.</span></div>`}
+            <div class="ptg-count"><b>${sel.length}</b> / ${o.petugasMax} petugas</div>
+            ${penuh ? '' : tambahBaru ? `
+              <div class="subform">
+                <div class="subform-head"><b>Petugas baru</b><button type="button" class="link-btn" id="pb-batal">Batal, pilih dari daftar</button></div>
+                <div class="field"><label for="pb-nama">Nama lengkap <span class="req">*</span></label><input class="input" id="pb-nama" maxlength="150" placeholder="Contoh: Ir. Budi Santoso, M.T."></div>
+                <div class="field"><label>Kategori <span class="req">*</span></label><div class="seg seg-form">${o.kategoriPetugas.map((k) => `<label><input type="radio" name="pb-kat" value="${k}"><span>${k}</span></label>`).join('')}</div></div>
+                <button type="button" class="btn btn-outline btn-sm" id="pb-ok">${icon('plus', 15)} Tambahkan ke kegiatan</button>
+              </div>` : `
+              <div class="ptg-add">
+                ${pilihan.length ? DOCSUI.combo('_pilihPetugas', 'pr-pilih', 'Pilih petugas terdaftar', pilihan, '') : ''}
+                <div class="ptg-add-act">${pilihan.length ? `<button type="button" class="btn btn-outline btn-sm" id="pr-pick-add">${icon('plus', 15)} Tambahkan</button>` : ''}
+                <button type="button" class="link-btn sm-gap" id="pr-baru">${icon('plus', 14)} Petugas belum terdaftar? Tambah petugas baru</button></div>
+              </div>`}`;
+          DOCSUI.bindCombo(box);
+          UI.$$('[data-rm]', box).forEach((b) => { b.onclick = () => { sel.splice(Number(b.dataset.rm), 1); drawPetugas(); }; });
+          const add = UI.$('#pr-pick-add', box);
+          if (add) add.onclick = () => {
+            const v = UI.$('#pr-pilih', box).value;
+            if (!v) return UI.toast('Pilih petugas dari daftar terlebih dahulu.', 'warn');
+            sel.push({ id: v }); drawPetugas();
+          };
+          const bb = UI.$('#pr-baru', box); if (bb) bb.onclick = () => { tambahBaru = true; drawPetugas(); UI.$('#pb-nama', box).focus(); };
+          const bt = UI.$('#pb-batal', box); if (bt) bt.onclick = () => { tambahBaru = false; drawPetugas(); };
+          const ok = UI.$('#pb-ok', box);
+          if (ok) ok.onclick = () => {
+            const n = UI.$('#pb-nama', box).value.trim();
+            const k = (box.querySelector('[name="pb-kat"]:checked') || {}).value;
+            if (!n) return UI.toast('Isi nama petugas.', 'warn');
+            if (!k) return UI.toast('Pilih kategori: Dosen, Tendik, atau Mahasiswa.', 'warn');
+            const ada = STATE.petugas.filter((p) => p.Nama_Petugas.trim().toLowerCase() === n.toLowerCase())[0];
+            if (ada) {
+              if (sel.some((x) => x.id === ada.ID_Petugas)) return UI.toast(ada.Nama_Petugas + ' sudah ada di daftar.', 'warn');
+              sel.push({ id: ada.ID_Petugas }); UI.toast(ada.Nama_Petugas + ' sudah terdaftar sebagai ' + ada.Kategori + ' — dipakai data yang ada.');
+            } else if (sel.some((x) => x.baru && x.Nama_Petugas.toLowerCase() === n.toLowerCase())) {
+              return UI.toast(n + ' sudah ada di daftar.', 'warn');
+            } else sel.push({ baru: true, Nama_Petugas: n, Kategori: k });
+            tambahBaru = false; drawPetugas();
+          };
+          rule();
+        }
+        function rule() {
+          const wajib = status() === 'Terlaksana';
+          UI.$('#pr-ptg-rule', el).textContent = wajib ? '(wajib ' + o.petugasMin + '–' + o.petugasMax + ' orang)' : '(boleh dilengkapi nanti; wajib ' + o.petugasMin + '–' + o.petugasMax + ' orang saat Terlaksana)';
+        }
         const upd = () => {
-          const st = form.querySelector('[name="Status"]:checked').value;
-          hint.textContent = st === 'Terlaksana' ? 'Isi tanggal realisasi bila berbeda dari rencana, lalu unggah bukti kegiatan.' :
+          const st = status();
+          hint.textContent = st === 'Terlaksana' ? 'Isi tanggal realisasi bila berbeda dari rencana, catat ' + o.petugasMin + '–' + o.petugasMax + ' petugas, lalu unggah bukti kegiatan.' :
             st === 'Batal' ? 'Kegiatan batal tetap tercatat di kalender dengan warna abu-abu.' : 'Kegiatan akan muncul di kalender promosi pada tanggal rencana.';
+          UI.$('#pr-ket-f', el).hidden = jenis() !== 'Lainnya';
+          rule();
         };
-        UI.$$('[name="Status"]', form).forEach((x) => x.addEventListener('change', upd));
-        upd();
+        UI.$$('[name="Status"], [name="Jenis_Kegiatan"]', form).forEach((x) => x.addEventListener('change', upd));
+        upd(); drawPetugas();
+
         form.onsubmit = async (e) => {
           e.preventDefault();
           const d = UI.formData(form);
-          const ok = validate(form, [
+          const okv = validate(form, [
             ['Nama_Sekolah', 'Nama sekolah wajib diisi.', () => !!d.Nama_Sekolah],
-            ['Tanggal_Rencana', 'Tanggal rencana wajib diisi.', () => !!d.Tanggal_Rencana]
+            ['Jenis_Kegiatan', 'Pilih jenis kegiatan.', () => !!jenis()],
+            ['Keterangan_Jenis', 'Jelaskan jenis kegiatan "Lainnya".', () => jenis() !== 'Lainnya' || !!String(d.Keterangan_Jenis || '').trim()],
+            ['Tanggal_Rencana', 'Tanggal rencana wajib diisi.', () => !!d.Tanggal_Rencana],
+            ['_petugas', 'Kegiatan Terlaksana wajib mencatat ' + o.petugasMin + '–' + o.petugasMax + ' petugas (saat ini ' + sel.length + ').', () => status() !== 'Terlaksana' || sel.length >= o.petugasMin]
+          ]);
+          if (!okv) return;
+          const data = {
+            Nama_Sekolah: d.Nama_Sekolah, Kota_Alamat: d.Kota_Alamat, Jenis_Kegiatan: jenis(), Keterangan_Jenis: d.Keterangan_Jenis || '',
+            Status: status(), Tanggal_Rencana: d.Tanggal_Rencana, Tanggal_Realisasi: d.Tanggal_Realisasi, Catatan: d.Catatan,
+            ID_Petugas: sel.filter((x) => !x.baru).map((x) => x.id),
+            petugasBaru: sel.filter((x) => x.baru).map((x) => ({ Nama_Petugas: x.Nama_Petugas, Kategori: x.Kategori }))
+          };
+          if (id) data.ID_Promosi = id;
+          try { await DATA.save('promosi', data, getFile()); UI.closeDrawer(); APP.refreshView(); }
+          catch (err) { UI.toast(err.message, 'error'); }
+        };
+      }
+    });
+  }
+
+  // =========================================================================
+  // MASTER PETUGAS
+  // =========================================================================
+  function petugasForm(id) {
+    const r = id ? DATA.byId('petugas', id) : { Status: 'Aktif' };
+    const o = STATE.options;
+    const canD = id && DATA.can('promosi', 'd');
+    const riwayat = id ? STATE.promosi.filter((p) => p._ptg.some((x) => x.ID_Petugas === id)).sort((a, b) => b._tgl.localeCompare(a._tgl)) : [];
+    const body = `<form class="form" id="f-ptg" novalidate>
+      <div class="id-box"><span>ID petugas</span><b class="mono">${id ? esc(id) : 'Otomatis (PTG-xxxx)'}</b></div>
+      <div class="field"><label for="pt-nama">Nama lengkap <span class="req">*</span></label>
+        <input class="input" id="pt-nama" name="Nama_Petugas" maxlength="150" value="${esc(r.Nama_Petugas)}" placeholder="Contoh: Ir. Budi Santoso, M.T." autocomplete="off"></div>
+      <div class="field"><label>Kategori <span class="req">*</span></label>
+        <div class="seg seg-form">${o.kategoriPetugas.map((k) => `<label><input type="radio" name="Kategori" value="${k}" ${r.Kategori === k ? 'checked' : ''}><span>${k}</span></label>`).join('')}</div></div>
+      <div class="field"><label for="pt-ket">Keterangan</label>
+        <input class="input" id="pt-ket" name="Keterangan" maxlength="200" value="${esc(r.Keterangan)}" placeholder="Contoh: Prodi Arsitektur / NIM 0521xxxx / Bagian Humas"></div>
+      <div class="field"><label>Status</label>
+        <div class="seg seg-form">${['Aktif', 'Nonaktif'].map((k) => `<label><input type="radio" name="Status" value="${k}" ${r.Status === k ? 'checked' : ''}><span>${k}</span></label>`).join('')}</div>
+        <p class="hint">Petugas Nonaktif (mis. mahasiswa yang sudah lulus) tidak muncul lagi di pilihan, tetapi riwayat tugasnya tetap tersimpan.</p></div>
+      ${id ? `<div class="form-sec">Riwayat tugas (${riwayat.length})</div>
+        ${riwayat.length ? `<ul class="mini-list">${riwayat.slice(0, 12).map((p) => `<li><span class="mono sm">${esc(UI.tgl(p._tgl))}</span><span class="t-main">${esc(p.Nama_Sekolah)}</span>${UI.badge(p.Status)}</li>`).join('')}</ul>` : '<p class="muted">Belum pernah bertugas.</p>'}` : ''}
+    </form>`;
+    UI.openDrawer({
+      title: id ? 'Ubah Petugas' : 'Tambah Petugas', subtitle: 'Master petugas promosi', icon: 'users', body: body,
+      footer: (canD ? `<button type="button" class="btn btn-ghost danger" id="pt-del">${icon('trash-2', 16)} Hapus</button>` : '') + footBtns('f-ptg', 'Simpan petugas'),
+      onMount(el) {
+        bindClose(el);
+        const form = UI.$('#f-ptg', el);
+        const del = UI.$('#pt-del', el);
+        if (del) del.onclick = async () => { if (await DATA.del('petugas', id, r.Nama_Petugas)) { UI.closeDrawer(); APP.refreshView(); } };
+        form.onsubmit = async (e) => {
+          e.preventDefault();
+          const d = UI.formData(form);
+          const k = (form.querySelector('[name="Kategori"]:checked') || {}).value;
+          const ok = validate(form, [
+            ['Nama_Petugas', 'Nama petugas wajib diisi.', () => !!String(d.Nama_Petugas || '').trim()],
+            ['Kategori', 'Pilih kategori: Dosen, Tendik, atau Mahasiswa.', () => !!k]
           ]);
           if (!ok) return;
-          if (id) d.ID_Promosi = id;
-          try { await DATA.save('promosi', d, getFile()); UI.closeDrawer(); APP.refreshView(); }
-          catch (err) { UI.toast(err.message, 'error'); }
+          const data = { Nama_Petugas: d.Nama_Petugas, Kategori: k, Keterangan: d.Keterangan, Status: (form.querySelector('[name="Status"]:checked') || {}).value || 'Aktif' };
+          if (id) data.ID_Petugas = id;
+          try {
+            await DATA.save('petugas', data);
+            UI.closeDrawer(); APP.refreshView();
+          } catch (err) { UI.toast(err.message, 'error'); }
         };
       }
     });
@@ -239,5 +380,5 @@ const FORMS = (() => {
     };
   }
 
-  return { dl, trail, footBtns, berkasBtn, validate, bindClose, promosiDetail, promosiForm, userForm, resetSandi };
+  return { dl, trail, footBtns, berkasBtn, validate, bindClose, promosiDetail, promosiForm, petugasForm, userForm, resetSandi };
 })();

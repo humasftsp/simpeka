@@ -256,7 +256,7 @@ const APP = (() => {
     const d = await API.call('bootstrap');
     Object.assign(STATE, {
       user: d.user, perms: d.perms, options: d.options,
-      mitra: d.mitra || [], mou: d.mou || [], moa: d.moa || [], ia: d.ia || [], promosi: d.promosi || [], pengguna: d.pengguna || [],
+      mitra: d.mitra || [], mou: d.mou || [], moa: d.moa || [], ia: d.ia || [], promosi: d.promosi || [], petugas: d.petugas || [], pengguna: d.pengguna || [],
       laporan: null, loadedAt: new Date()
     });
     DATA.derive();

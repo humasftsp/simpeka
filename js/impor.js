@@ -40,6 +40,39 @@ const IMPORTER = (() => {
     moa: { 'NOMOR MOA': 'Nomor_MoA', 'NOMOR MOU': '_nomorInduk' },
     ia: { 'NOMOR IA': 'Nomor_IA', 'NOMOR MOA': '_nomorInduk', 'NOMOR MOU': '_nomorInduk2' }
   };
+  // Data promosi lama (Template_Promosi.xlsx); nama kolom alternatif ikut dikenali
+  const PROMOSI = {
+    'NO': '_no', 'ID SIMPEKA': 'ID_Promosi', 'NAMA SEKOLAH': 'Nama_Sekolah', 'SEKOLAH': 'Nama_Sekolah',
+    'KOTA/ALAMAT': 'Kota_Alamat', 'KOTA': 'Kota_Alamat', 'ALAMAT': 'Kota_Alamat', 'LOKASI': 'Kota_Alamat',
+    'JENIS KEGIATAN': 'Jenis_Kegiatan', 'JENIS': 'Jenis_Kegiatan', 'KETERANGAN JENIS': 'Keterangan_Jenis', 'KETERANGAN JENIS KEGIATAN': 'Keterangan_Jenis',
+    'TANGGAL RENCANA': 'Tanggal_Rencana', 'TANGGAL': 'Tanggal_Rencana', 'TANGGAL REALISASI': 'Tanggal_Realisasi',
+    'STATUS': 'Status', 'CATATAN': 'Catatan', 'KETERANGAN': 'Catatan', 'URL BUKTI': '_url', 'BUKTI': '_url', 'PIC': '_pic'
+  };
+  [1, 2, 3, 4].forEach((i) => { PROMOSI['PETUGAS ' + i] = '_p' + i; PROMOSI['KATEGORI ' + i] = '_k' + i; });
+  const PROMOSI_HEAD = ['NO', 'NAMA SEKOLAH', 'KOTA/ALAMAT', 'JENIS KEGIATAN', 'KETERANGAN JENIS', 'TANGGAL RENCANA', 'TANGGAL REALISASI', 'STATUS']
+    .concat([1, 2, 3, 4].reduce((a, i) => a.concat(['PETUGAS ' + i, 'KATEGORI ' + i]), []), ['CATATAN', 'URL BUKTI', 'ID SIMPEKA']);
+  const jenisNorm = (v) => {
+    const s = String(v || '').trim();
+    if (!s) return { j: '', k: '' };
+    if (/pameran|stand|expo|booth/i.test(s)) return { j: 'Pameran (Stand)', k: '' };
+    if (/presentasi|sosialisasi/i.test(s)) return { j: 'Presentasi', k: '' };
+    if (/^lain/i.test(s)) return { j: 'Lainnya', k: '' };
+    return { j: 'Lainnya', k: s }; // jenis lain (mis. Webinar) → Lainnya + keterangan
+  };
+  const statusNorm = (v) => {
+    const s = String(v || '').trim();
+    if (/terlaksana|selesai|sudah|done/i.test(s)) return 'Terlaksana';
+    if (/batal|cancel/i.test(s)) return 'Batal';
+    if (/rencana|akan|belum|plan|jadwal/i.test(s)) return 'Rencana';
+    return s;
+  };
+  const katNorm = (v) => {
+    const s = String(v || '').trim();
+    if (/dosen|lecturer/i.test(s)) return 'Dosen';
+    if (/tendik|tenaga|staf|staff|karyawan|pegawai/i.test(s)) return 'Tendik';
+    if (/mahasis|mhs|student/i.test(s)) return 'Mahasiswa';
+    return s;
+  };
   const normH = (s) => String(s || '').toUpperCase().replace(/\s+/g, ' ').replace(/[.:]+$/, '').trim();
 
   // ---------- tanggal ----------
@@ -71,25 +104,37 @@ const IMPORTER = (() => {
     const buf = await file.arrayBuffer();
     // cellDates: false → tanggal tetap berupa nomor seri Excel; dikonversi tanpa zona waktu (hindari mundur 1 hari).
     const wb = X.read(buf, { type: 'array', cellDates: false });
-    let found = null;
-    for (const name of wb.SheetNames) {
-      const ws = wb.Sheets[name];
-      if (!ws['!ref']) continue;
-      const rg = X.utils.decode_range(ws['!ref']);
-      for (let r = rg.s.r; r <= Math.min(rg.e.r, rg.s.r + 10) && !found; r++) {
-        for (let c = rg.s.c; c <= rg.e.c; c++) {
-          const cell = ws[X.utils.encode_cell({ r: r, c: c })];
-          if (cell && /^NOMOR (MOU|MOA|IA)$/.test(normH(cell.v))) { found = { ws: ws, name: name, r: r, rg: rg }; break; }
+    // Cari sheet berjudul kolom yang sesuai tombol yang dipakai dulu (berkas ekspor SIMPEKA berisi
+    // sheet MoU, MoA, IA, dan Promosi sekaligus); bila tidak ada, cari jenis lain agar pesannya jelas.
+    const cari = (re) => {
+      for (const name of wb.SheetNames) {
+        const ws = wb.Sheets[name];
+        if (!ws['!ref']) continue;
+        const rg = X.utils.decode_range(ws['!ref']);
+        for (let r = rg.s.r; r <= Math.min(rg.e.r, rg.s.r + 10); r++) {
+          for (let c = rg.s.c; c <= rg.e.c; c++) {
+            const cell = ws[X.utils.encode_cell({ r: r, c: c })];
+            if (cell && re.test(normH(cell.v))) return { ws: ws, name: name, r: r, rg: rg };
+          }
         }
       }
-      if (found) break;
+      return null;
+    };
+    const RE_KS = /^NOMOR (MOU|MOA|IA)$/, RE_PR = /^NAMA SEKOLAH$/;
+    const found = jenisPaksa === 'promosi' ? (cari(RE_PR) || cari(RE_KS)) : (cari(RE_KS) || cari(RE_PR));
+    if (!found) {
+      throw new Error(jenisPaksa === 'promosi'
+        ? 'Baris judul kolom tidak ditemukan. Pastikan ada kolom "NAMA SEKOLAH" (gunakan Template Promosi).'
+        : 'Baris judul kolom tidak ditemukan. Pastikan ada kolom "NOMOR MOU", "NOMOR MOA", atau "NOMOR IA".');
     }
-    if (!found) throw new Error('Baris judul kolom tidak ditemukan. Pastikan ada kolom "NOMOR MOU", "NOMOR MOA", atau "NOMOR IA".');
     const { ws, rg } = found;
     const headers = [];
     for (let c = rg.s.c; c <= rg.e.c; c++) { const cell = ws[X.utils.encode_cell({ r: found.r, c: c })]; headers.push({ c: c, h: normH(cell && cell.v) }); }
     const hs = headers.map((x) => x.h);
-    const auto = hs.indexOf('NOMOR IA') >= 0 ? 'ia' : hs.indexOf('NOMOR MOA') >= 0 ? 'moa' : 'mou';
+    const auto = hs.indexOf('NOMOR IA') >= 0 ? 'ia' : hs.indexOf('NOMOR MOA') >= 0 ? 'moa' : hs.indexOf('NOMOR MOU') >= 0 ? 'mou' : 'promosi';
+    if (jenisPaksa === 'promosi' && auto !== 'promosi') throw new Error('Berkas ini berisi data kerja sama (kolom NOMOR ...). Gunakan tombol Impor MoU / MoA / IA.');
+    if (jenisPaksa !== 'promosi' && auto === 'promosi') throw new Error('Berkas ini berisi data promosi (kolom NAMA SEKOLAH). Gunakan tombol Impor Data Promosi.');
+    if (auto === 'promosi') return parsePromosi(X, found, headers);
     const LBL = { mou: 'MoU', moa: 'MoA', ia: 'IA' };
     // Berkas MoA juga punya kolom NOMOR MOU (induk) — jangan sampai MoA terbaca sebagai MoU.
     if (jenisPaksa && jenisPaksa !== auto) throw new Error('Berkas ini berisi data ' + LBL[auto] + ' (ada kolom "NOMOR ' + LBL[auto].toUpperCase() + '"), bukan ' + LBL[jenisPaksa] + '.');
@@ -132,6 +177,69 @@ const IMPORTER = (() => {
     return { jenis: jenis, rows: rows, dikenali: dikenali, tidakDikenali: tidakDikenali, sheet: found.name, barisHeader: found.r + 1 };
   }
 
+  function parsePromosi(X, found, headers) {
+    const { ws, rg } = found;
+    const dikenali = [], tidakDikenali = [];
+    headers.forEach((x) => { if (!x.h) return; (PROMOSI[x.h] ? dikenali : tidakDikenali).push(x.h); });
+    const rows = [];
+    for (let r = found.r + 1; r <= rg.e.r; r++) {
+      const o = { _baris: r + 1 };
+      headers.forEach((x) => {
+        const f = PROMOSI[x.h];
+        if (!f) return;
+        const cell = ws[X.utils.encode_cell({ r: r, c: x.c })];
+        if (!cell) return;
+        if (f === '_url') {
+          const link = cell.l && cell.l.Target;
+          const txt = String(cell.v === undefined ? '' : cell.v).trim();
+          if (link && /^https?:\/\//i.test(link)) o.Link_Bukti = link;
+          else if (/^https?:\/\//i.test(txt)) o.Link_Bukti = txt;
+          return;
+        }
+        let v = /^Tanggal_/.test(f) ? tanggal(cell.v) : String(cell.v === undefined ? '' : cell.v).trim();
+        if (/^[-–—.]+$/.test(v)) v = '';
+        if (v !== '' && !(f in o)) o[f] = v;
+      });
+      if (!o.Nama_Sekolah && !o.Tanggal_Rencana) continue; // baris kosong
+      const jn = jenisNorm(o.Jenis_Kegiatan);
+      o.Jenis_Kegiatan = jn.j;
+      if (jn.k && !o.Keterangan_Jenis) o.Keterangan_Jenis = jn.k;
+      if (o.Status) o.Status = statusNorm(o.Status);
+      o._petugas = [1, 2, 3, 4].map((i) => ({ nama: o['_p' + i] || '', kategori: katNorm(o['_k' + i]) })).filter((p) => p.nama);
+      [1, 2, 3, 4].forEach((i) => { delete o['_p' + i]; delete o['_k' + i]; });
+      if (o._pic) o.Catatan = (o.Catatan ? o.Catatan + '\n' : '') + 'PIC (data lama): ' + o._pic;
+      delete o._pic; delete o._no;
+      rows.push(o);
+    }
+    return { jenis: 'promosi', rows: rows, dikenali: dikenali, tidakDikenali: tidakDikenali, sheet: found.name, barisHeader: found.r + 1 };
+  }
+
+  /** Template kosong untuk impor data promosi lama (dibuat di browser). */
+  async function templatePromosi() {
+    const X = await loadXLSX();
+    const wb = X.utils.book_new();
+    const ws = X.utils.aoa_to_sheet([PROMOSI_HEAD]);
+    ws['!cols'] = PROMOSI_HEAD.map((h) => ({ wch: /SEKOLAH|CATATAN|ALAMAT|URL/.test(h) ? 34 : /PETUGAS/.test(h) ? 26 : /KETERANGAN/.test(h) ? 28 : 16 }));
+    X.utils.book_append_sheet(wb, ws, 'Promosi');
+    const pet = [['KOLOM', 'CARA MENGISI'],
+      ['NAMA SEKOLAH', 'Wajib. Contoh: SMA Negeri 8 Jakarta'],
+      ['KOTA/ALAMAT', 'Opsional. Contoh: Bukit Duri, Jakarta Selatan'],
+      ['JENIS KEGIATAN', 'Presentasi, Pameran (Stand), atau Lainnya. Boleh kosong untuk data lama (lengkapi di aplikasi).'],
+      ['KETERANGAN JENIS', 'Wajib bila JENIS KEGIATAN = Lainnya. Contoh: Webinar untuk siswa SMA'],
+      ['TANGGAL RENCANA', 'Wajib. Contoh: 21/08/2025 atau 21 Agustus 2025'],
+      ['TANGGAL REALISASI', 'Opsional. Diisi bila kegiatan sudah terlaksana'],
+      ['STATUS', 'Rencana, Terlaksana, atau Batal. Kosong = Terlaksana bila ada tanggal realisasi, selain itu Rencana'],
+      ['PETUGAS 1–4', 'Nama petugas (maksimal 4). Kegiatan Terlaksana sebaiknya 2–4 petugas'],
+      ['KATEGORI 1–4', 'Dosen, Tendik, atau Mahasiswa. Wajib bila nama petugas belum terdaftar di SIMPEKA'],
+      ['CATATAN', 'Opsional. Contoh: Peserta ±120 siswa kelas XII'],
+      ['URL BUKTI', 'Opsional. Tautan foto/berita acara (http:// atau https://)'],
+      ['ID SIMPEKA', 'Kosongkan untuk data baru. Terisi otomatis bila berkas berasal dari Ekspor Excel SIMPEKA'],
+      ['', ''], ['Catatan', 'Satu baris = satu kegiatan. Kolom yang tidak ada datanya cukup dikosongkan.']];
+    const wp = X.utils.aoa_to_sheet(pet); wp['!cols'] = [{ wch: 22 }, { wch: 100 }];
+    X.utils.book_append_sheet(wb, wp, 'Petunjuk');
+    X.writeFile(wb, 'Template_Promosi_SIMPEKA.xlsx');
+  }
+
   // ---------- ekspor ke format Excel SIMKERMA ----------
   function tglText(s) {
     const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s || '');
@@ -162,20 +270,28 @@ const IMPORTER = (() => {
       ['Mitra', ['NO', 'ID', 'MITRA', 'JENIS MITRA', 'KATEGORI MITRA', 'LINGKUP', 'NEGARA', 'BENUA', 'NAMA PIC', 'EMAIL PIC', 'ALAMAT PIC', 'JUMLAH MOU', 'JUMLAH MOA', 'JUMLAH IA'],
         STATE.mitra.slice().sort((a, b) => a.Nama_Mitra.localeCompare(b.Nama_Mitra, 'id')).map((m, i) => [i + 1, m.ID_Mitra, m.Nama_Mitra, m.Jenis_Mitra, m.Kategori_Mitra, m.Lingkup, m.Negara, m.Benua, m.Nama_PIC, m.Email_PIC, m.Alamat_PIC, m._mou, m._moa, m._ia])]
     ];
+    if ((STATE.promosi || []).length || (STATE.petugas || []).length) {
+      sheets.push(['Promosi', PROMOSI_HEAD, STATE.promosi.slice().sort((a, b) => String(a.Tanggal_Rencana).localeCompare(String(b.Tanggal_Rencana))).map((r, i) => {
+        const p = [0, 1, 2, 3].reduce((a, j) => a.concat(r._ptg[j] ? [r._ptg[j].Nama_Petugas, r._ptg[j].Kategori] : ['', '']), []);
+        return [i + 1, r.Nama_Sekolah, r.Kota_Alamat, r.Jenis_Kegiatan, r.Keterangan_Jenis, tglText(r.Tanggal_Rencana), tglText(r.Tanggal_Realisasi), r.Status].concat(p, [r.Catatan, r.Link_Bukti || '', r.ID_Promosi]);
+      })]);
+      sheets.push(['Petugas', ['NO', 'ID', 'NAMA PETUGAS', 'KATEGORI', 'KETERANGAN', 'STATUS', 'JUMLAH TUGAS', 'TERLAKSANA'],
+        STATE.petugas.slice().sort((a, b) => a.Nama_Petugas.localeCompare(b.Nama_Petugas, 'id')).map((p, i) => [i + 1, p.ID_Petugas, p.Nama_Petugas, p.Kategori, p.Keterangan, p.Status, p._tugas, p._selesai])]);
+    }
     sheets.forEach(([nama, head, data]) => {
       const ws = X.utils.aoa_to_sheet([head].concat(data));
-      const urlCol = head.indexOf('URL DOKUMEN');
+      const urlCol = head.indexOf('URL DOKUMEN') >= 0 ? head.indexOf('URL DOKUMEN') : head.indexOf('URL BUKTI');
       if (urlCol >= 0) data.forEach((row, i) => {
         const addr = X.utils.encode_cell({ r: i + 1, c: urlCol });
         if (row[urlCol] && ws[addr]) ws[addr].l = { Target: row[urlCol] };
       });
-      ws['!cols'] = head.map((h) => ({ wch: /JUDUL|ALAMAT|JENIS MITRA/.test(h) ? 50 : /MITRA|NOMOR|PIC|URL/.test(h) ? 30 : 12 }));
+      ws['!cols'] = head.map((h) => ({ wch: /JUDUL|ALAMAT|JENIS MITRA|CATATAN/.test(h) ? 50 : /MITRA|NOMOR|PIC|URL|SEKOLAH|PETUGAS/.test(h) ? 30 : 12 }));
       ws['!freeze'] = { xSplit: 0, ySplit: 1 };
       X.utils.book_append_sheet(wb, ws, nama);
     });
     const t = UI.todayStr().replace(/-/g, '');
-    X.writeFile(wb, 'SIMPEKA_Data_Kerja_Sama_' + t + '.xlsx');
+    X.writeFile(wb, 'SIMPEKA_Data_' + t + '.xlsx');
   }
 
-  return { loadXLSX, parse, ekspor, tanggal };
+  return { loadXLSX, parse, ekspor, tanggal, templatePromosi };
 })();

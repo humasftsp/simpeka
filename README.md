@@ -10,7 +10,7 @@ Frontend statis (HTML/CSS/JavaScript tanpa framework) untuk GitHub Pages. Backen
 - MoU, MoA, dan IA dengan kolom format SIMKERMA dan status masa berlaku otomatis: Aktif, Akan Berakhir, Segera Berakhir, Kadaluarsa
 - Relasi dokumen: satu MoU → banyak MoA; MoA boleh tanpa MoU; IA menempel ke MoA, ke MoU, atau mandiri
 - Impor dari Excel SIMKERMA (diperiksa dulu sebelum disimpan) dan ekspor kembali ke Excel
-- Promosi sekolah beserta bukti kegiatan
+- Promosi sekolah: jenis kegiatan (Presentasi / Pameran (Stand) / Lainnya), 2–4 petugas dari Master Petugas (Dosen / Tendik / Mahasiswa), catatan, dan bukti kegiatan; impor data promosi lama dari Excel
 - Kalender terpadu: tanggal berakhir kerja sama dan jadwal promosi
 - Email pengingat otomatis 6, 3, dan 1 bulan sebelum berakhir
 - Laporan PDF satu klik, diarsipkan di Google Drive
